@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MuGöl OS</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+    input, textarea, select, button { font-family: inherit; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+/* ═══════════════════════════ UYGULAMALAR ═══════════════════════════ */
+
+function Calculator() {
+  const [display, setDisplay] = useState("0");
+  const [prev, setPrev] = useState(null);
+  const [op, setOp] = useState(null);
+  const [fresh, setFresh] = useState(true);
+
+  const push = (n) => { setDisplay(fresh ? String(n) : display === "0" ? String(n) : display + n); setFresh(false); };
+  const setOperation = (o) => { setPrev(parseFloat(display)); setOp(o); setFresh(true); };
+  const equals = () => {
+    if (!op || prev === null) return;
+    const c = parseFloat(display);
+    const r = op === "+" ? prev+c : op === "−" ? prev-c : op === "×" ? prev*c : prev/c;
+    setDisplay(String(parseFloat(r.toFixed(10))));
+    setOp(null); setPrev(null); setFresh(true);
+  };
+  const clear = () => { setDisplay("0"); setPrev(null); setOp(null); setFresh(true); };
+
+  const Btn = ({ label, onClick, variant="num" }) => {
+    const bg = variant==="op" ? "rgba(14,165,233,0.75)" : variant==="eq" ? "#06b6d4" : variant==="fn" ? "rgba(148,163,184,0.2)" : "rgba(255,255,255,0.09)";
+    return (
+      <button onClick={onClick} style={{
+        padding:"14px 0", fontSize:"16px", fontWeight:"600", borderRadius:"10px",
+        border:"1px solid rgba(255,255,255,0.08)", cursor:"pointer", background:bg, color:"#f1f5f9",
+        ...(label==="0" ? {gridColumn:"span 2"} : {})
+      }}>{label}</button>
+    );
+  };
+
+  return (
+    <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:"8px"}}>
+      <div style={{background:"rgba(0,0,0,0.35)",borderRadius:"10px",padding:"16px",textAlign:"right",fontFamily:"monospace"}}>
+        {op && <div style={{fontSize:"11px",color:"#64748b",marginBottom:"4px"}}>{prev} {op}</div>}
+        <div style={{fontSize:"32px",color:"#f1f5f9",overflow:"hidden",textOverflow:"ellipsis"}}>{display}</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"6px"}}>
+        <Btn label="C" onClick={clear} variant="fn"/>
+        <Btn label="+/−" onClick={()=>setDisplay(String(-parseFloat(display)))} variant="fn"/>
+        <Btn label="%" onClick={()=>setDisplay(String(parseFloat(display)/100))} variant="fn"/>
+        <Btn label="÷" onClick={()=>setOperation("÷")} variant="op"/>
+        {["7","8","9"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
+        <Btn label="×" onClick={()=>setOperation("×")} variant="op"/>
+        {["4","5","6"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
+        <Btn label="−" onClick={()=>setOperation("−")} variant="op"/>
+        {["1","2","3"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
+        <Btn label="+" onClick={()=>setOperation("+")} variant="op"/>
+        <Btn label="0" onClick={()=>push("0")}/>
+        <Btn label="." onClick={()=>{ if(!display.includes(".")){setDisplay(display+"."); setFresh(false); }}}/>
+        <Btn label="=" onClick={equals} variant="eq"/>
+      </div>
+    </div>
+  );
+}
+
+function Notepad() {
+  const [text, setText] = useState("Merhaba MuGöl OS! 🌊\n\nBuraya dilediğin notları yazabilirsin.\n\n— Keyifli kullanımlar.");
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <textarea value={text} onChange={e=>setText(e.target.value)} style={{
+        flex:1, background:"transparent", border:"none", outline:"none",
+        color:"#e2e8f0", fontFamily:"'Courier New',monospace", fontSize:"14px",
+        resize:"none", padding:"14px", lineHeight:"1.75",
+      }}/>
+      <div style={{padding:"4px 14px",borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:"11px",color:"#475569",display:"flex",gap:"16px"}}>
+        <span>{text.length} karakter</span><span>{words} kelime</span><span>{text.split("\n").length} satır</span>
+      </div>
+    </div>
+  );
+}
+
+function Terminal() {
+  const [lines, setLines] = useState(["MuGöl OS Terminal v1.0  —  'help' yazın", ""]);
+  const [input, setInput] = useState("");
+  const [history, setHistory] = useState([]);
+  const [hIdx, setHIdx] = useState(-1);
+  const endRef = useRef(null);
+  useEffect(() => { endRef.current?.scrollIntoView({behavior:"smooth"}); }, [lines]);
+
+  const CMDS = {
+    help:    ()=>["Komutlar:","  help · about · clear · date · whoami · ls · echo <metin> · neofetch"],
+    about:   ()=>["MuGöl OS 1.0.0 — Tarayıcı tabanlı işletim sistemi"],
+    date:    ()=>[new Date().toLocaleString("tr-TR")],
+    whoami:  ()=>["mugol-kullanici"],
+    ls:      ()=>["Belgeler/   İndirmeler/   Masaüstü/   Müzik/   Resimler/   Videolar/"],
+    neofetch:()=>[
+      "        🌊        mugol@mugol-os",
+      "                 ─────────────",
+      "                 OS: MuGöl OS 1.0",
+      "                 Kernel: MuGöl 5.15.0",
+      "                 Shell: mgsh 1.0",
+      "                 CPU: MuGöl Core i9",
+      "                 RAM: 16 GB",
+    ],
+  };
+
+  const run = (raw) => {
+    const parts = raw.trim().split(" ");
+    const cmd = parts[0].toLowerCase();
+    const newLines = [...lines, `$ ${raw}`];
+    if (cmd==="clear") { setLines([]); return; }
+    if (cmd==="echo") { newLines.push(parts.slice(1).join(" ")); }
+    else if (CMDS[cmd]) { newLines.push(...CMDS[cmd]()); }
+    else if (cmd) { newLines.push(`Komut bulunamadı: ${parts[0]}`); }
+    newLines.push("");
+    setLines(newLines);
+  };
+
+  return (
+    <div style={{background:"#060d16",height:"100%",padding:"12px 14px",fontFamily:"'Courier New',monospace",fontSize:"13px",color:"#4ade80",display:"flex",flexDirection:"column"}}>
+      <div style={{flex:1,overflow:"auto"}}>
+        {lines.map((l,i)=><div key={i}>{l||"\u00A0"}</div>)}
+        <div ref={endRef}/>
+      </div>
+      <div style={{display:"flex",gap:"6px",alignItems:"center",borderTop:"1px solid rgba(74,222,128,0.1)",paddingTop:"8px",marginTop:"4px"}}>
+        <span style={{color:"#22d3ee"}}>$</span>
+        <input value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{
+            if(e.key==="Enter"){if(input.trim())setHistory(h=>[input,...h]); run(input); setInput(""); setHIdx(-1);}
+            if(e.key==="ArrowUp"){const ni=Math.min(hIdx+1,history.length-1); setHIdx(ni); setInput(history[ni]||"");}
+            if(e.key==="ArrowDown"){const ni=Math.max(hIdx-1,-1); setHIdx(ni); setInput(ni===-1?"":history[ni]);}
+          }}
+          style={{flex:1,background:"transparent",border:"none",outline:"none",color:"#4ade80",fontFamily:"'Courier New',monospace",fontSize:"13px"}}
+          autoFocus spellCheck={false}/>
+      </div>
+    </div>
+  );
+}
+
+function Files() {
+  const tree = {
+    "Belgeler":[["rapor.docx","📄"],["notlar.txt","📝"],["sunum.pptx","📊"]],
+    "İndirmeler":[["mugol_os.iso","💿"],["müzik.mp3","🎵"],["fotoğraf.jpg","🖼️"],["arşiv.zip","📦"]],
+    "Masaüstü":[["kısayol.lnk","🔗"],["README.txt","📝"]],
+    "Resimler":[["tatil.jpg","🖼️"],["aile.png","🖼️"],["ekran.png","🖼️"]],
+    "Müzik":[["playlist.m3u","🎵"],["favori.mp3","🎵"]],
+    "Videolar":[["film.mp4","🎬"],["kısa.mov","🎬"]],
+  };
+  const [folder,setFolder]=useState(null);
+  const [sel,setSel]=useState(null);
+
+  return (
+    <div style={{display:"flex",height:"100%",fontSize:"13px",color:"#e2e8f0"}}>
+      <div style={{width:"145px",borderRight:"1px solid rgba(255,255,255,0.08)",padding:"8px",display:"flex",flexDirection:"column",gap:"2px",overflow:"auto"}}>
+        {[["Ana Klasör","🏠"],...Object.keys(tree).map(k=>[k,"📁"])].map(([name,icon])=>(
+          <div key={name} onClick={()=>{setFolder(name==="Ana Klasör"?null:name);setSel(null);}}
+            style={{padding:"6px 8px",borderRadius:"7px",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",
+              background:(folder===name||(name==="Ana Klasör"&&!folder))?"rgba(14,165,233,0.2)":"transparent",
+              color:(folder===name||(name==="Ana Klasör"&&!folder))?"#38bdf8":"#cbd5e1"}}>
+            <span>{icon}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{flex:1,padding:"10px",overflow:"auto"}}>
+        {!folder ? (
+          <div style={{display:"flex",flexWrap:"wrap",gap:"10px"}}>
+            {Object.keys(tree).map(f=>(
+              <div key={f} onDoubleClick={()=>setFolder(f)} onClick={()=>setSel(f)}
+                style={{width:"76px",textAlign:"center",cursor:"pointer",padding:"8px 4px",borderRadius:"10px",
+                  background:sel===f?"rgba(14,165,233,0.2)":"transparent",border:`2px solid ${sel===f?"rgba(14,165,233,0.4)":"transparent"}`}}>
+                <div style={{fontSize:"32px"}}>📁</div>
+                <div style={{fontSize:"11px",marginTop:"4px",color:"#cbd5e1",wordBreak:"break-all",lineHeight:1.3}}>{f}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
+              <button onClick={()=>{setFolder(null);setSel(null);}} style={{background:"rgba(255,255,255,0.08)",border:"none",color:"#94a3b8",padding:"4px 10px",borderRadius:"6px",cursor:"pointer",fontSize:"12px"}}>← Geri</button>
+              <span style={{color:"#475569",fontSize:"11px"}}>{folder}</span>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"10px"}}>
+              {tree[folder].map(([name,icon])=>(
+                <div key={name} onClick={()=>setSel(name)}
+                  style={{width:"76px",textAlign:"center",cursor:"pointer",padding:"8px 4px",borderRadius:"10px",
+                    background:sel===name?"rgba(14,165,233,0.2)":"transparent",border:`2px solid ${sel===name?"rgba(14,165,233,0.4)":"transparent"}`}}>
+                  <div style={{fontSize:"28px"}}>{icon}</div>
+                  <div style={{fontSize:"10px",marginTop:"4px",color:"#cbd5e1",wordBreak:"break-all",lineHeight:1.3}}>{name}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function About() {
+  const specs=[
+    ["İşlemci","MuGöl Core i9 @ 4.2GHz"],["Bellek","16 GB DDR5-5600"],
+    ["Depolama","512 GB NVMe SSD"],["GPU","MuGöl Graphics Pro 8GB"],
+    ["Kernel","MuGöl 5.15.0"],["Kabuk","mgsh 1.0.0"],
+    ["Masaüstü","MuGöl DE 1.0"],["Konum","Türkiye 🇹🇷"],
+  ];
+  return (
+    <div style={{padding:"24px",color:"#e2e8f0",overflow:"auto",height:"100%"}}>
+      <div style={{textAlign:"center",marginBottom:"20px"}}>
+        <div style={{fontSize:"60px",marginBottom:"6px"}}>🌊</div>
+        <h2 style={{margin:"0 0 2px",fontSize:"24px",background:"linear-gradient(90deg,#38bdf8,#22d3ee)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>MuGöl OS</h2>
+        <p style={{color:"#64748b",margin:0,fontSize:"13px"}}>Sürüm 1.0.0 · 2026</p>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"12px",overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)"}}>
+        {specs.map(([k,v],i)=>(
+          <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",borderBottom:i<specs.length-1?"1px solid rgba(255,255,255,0.05)":"none",fontSize:"13px"}}>
+            <span style={{color:"#64748b"}}>{k}</span><span>{v}</span>
+          </div>
+        ))}
+      </div>
+      <p style={{textAlign:"center",color:"#334155",fontSize:"11px",marginTop:"16px"}}>© 2026 MuGöl Systems. Tüm hakları saklıdır.</p>
+    </div>
+  );
+}
+
+function Settings({theme,onThemeChange}) {
+  const [notif,setNotif]=useState(true);
+  const [sound,setSound]=useState(true);
+  const themes=[["🌌","Uzay"],["🌊","Okyanus"],["🌲","Orman"],["🔥","Ateş"]];
+  const Toggle=({val,set})=>(
+    <div onClick={()=>set(!val)} style={{width:"40px",height:"22px",borderRadius:"11px",background:val?"#0ea5e9":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
+      <div style={{position:"absolute",top:"3px",left:val?"20px":"3px",width:"16px",height:"16px",borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
+    </div>
+  );
+  return (
+    <div style={{padding:"20px",color:"#e2e8f0",overflow:"auto",height:"100%"}}>
+      <p style={{color:"#94a3b8",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>GÖRÜNÜM</p>
+      <p style={{fontSize:"13px",marginBottom:"10px"}}>Tema</p>
+      <div style={{display:"flex",gap:"8px",marginBottom:"20px"}}>
+        {themes.map(([icon,name],i)=>(
+          <button key={i} onClick={()=>onThemeChange(i)} style={{flex:1,padding:"10px 4px",borderRadius:"10px",cursor:"pointer",
+            border:`2px solid ${theme===i?"#22d3ee":"rgba(255,255,255,0.08)"}`,
+            background:theme===i?"rgba(34,211,238,0.1)":"rgba(255,255,255,0.04)",
+            color:"#e2e8f0",fontSize:"20px",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+            <span>{icon}</span><span style={{fontSize:"10px",color:"#94a3b8"}}>{name}</span>
+          </button>
+        ))}
+      </div>
+      <p style={{color:"#94a3b8",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>SİSTEM</p>
+      {[["Bildirimler",notif,setNotif],["Ses Efektleri",sound,setSound]].map(([label,val,set])=>(
+        <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
+          <span style={{fontSize:"13px"}}>{label}</span><Toggle val={val} set={set}/>
+        </div>
+      ))}
+      <p style={{fontSize:"13px",marginBottom:"8px"}}>Dil</p>
+      <select style={{width:"100%",padding:"9px 12px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",color:"#e2e8f0",borderRadius:"8px",fontSize:"13px",outline:"none"}}>
+        <option>Türkçe</option><option>English</option><option>Deutsch</option>
+      </select>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ PENCERE ═══════════════════════════ */
+
+function OSWindow({win,isActive,onClose,onMin,onFocus,appContent}) {
+  const [pos,setPos]=useState(win.pos);
+  const [maximized,setMaximized]=useState(false);
+  const posRef=useRef(pos);
+  posRef.current=pos;
+
+  const onTitleMouseDown=useCallback((e)=>{
+    if(maximized)return;
+    onFocus();
+    const ox=e.clientX-posRef.current.x, oy=e.clientY-posRef.current.y;
+    const mv=(me)=>setPos({x:me.clientX-ox,y:me.clientY-oy});
+    const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};
+    document.addEventListener("mousemove",mv);
+    document.addEventListener("mouseup",up);
+  },[maximized,onFocus]);
+
+  if(win.minimized)return null;
+
+  return (
+    <div onMouseDown={onFocus} style={{
+      position:"absolute",
+      left:maximized?0:pos.x, top:maximized?0:pos.y,
+      width:maximized?"100%":win.app.size.w,
+      height:maximized?"calc(100% - 48px)":win.app.size.h,
+      background:"rgba(10,18,35,0.88)",
+      backdropFilter:"blur(24px) saturate(1.4)",
+      borderRadius:maximized?0:"12px",
+      border:`1px solid ${isActive?"rgba(34,211,238,0.25)":"rgba(255,255,255,0.08)"}`,
+      boxShadow:isActive?"0 24px 64px rgba(0,0,0,0.65), 0 0 0 1px rgba(34,211,238,0.1)":"0 8px 32px rgba(0,0,0,0.4)",
+      zIndex:win.z, overflow:"hidden", display:"flex", flexDirection:"column",
+      transition:maximized?"all 0.22s cubic-bezier(0.4,0,0.2,1)":"box-shadow 0.15s",
+    }}>
+      <div onMouseDown={onTitleMouseDown} style={{
+        height:"38px",display:"flex",alignItems:"center",padding:"0 10px",gap:"8px",
+        background:isActive?"rgba(14,165,233,0.1)":"rgba(255,255,255,0.03)",
+        borderBottom:"1px solid rgba(255,255,255,0.07)",
+        userSelect:"none",cursor:maximized?"default":"move",flexShrink:0,
+      }}>
+        <div style={{display:"flex",gap:"6px"}}>
+          {[["#ef4444",onClose],["#f59e0b",onMin],["#22c55e",()=>setMaximized(m=>!m)]].map(([c,fn],i)=>(
+            <button key={i} onClick={fn} style={{width:"12px",height:"12px",borderRadius:"50%",background:c,border:"none",cursor:"pointer"}}/>
+          ))}
+        </div>
+        <span style={{flex:1,textAlign:"center",fontSize:"12px",color:isActive?"#e2e8f0":"#64748b",fontWeight:"500"}}>
+          {win.app.icon} {win.app.name}
+        </span>
+        <div style={{width:"46px"}}/>
+      </div>
+      <div style={{flex:1,overflow:"hidden"}}>{appContent}</div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ TEMALAR ═══════════════════════════ */
+
+const THEMES=[
+  {bg:"linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#0c1a2e 65%,#042f2e 100%)", accent:"radial-gradient(ellipse at 20% 50%,rgba(14,165,233,0.09) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(139,92,246,0.08) 0%,transparent 50%)"},
+  {bg:"linear-gradient(135deg,#0c2340 0%,#0f3d5c 40%,#05262d 100%)", accent:"radial-gradient(ellipse at 30% 60%,rgba(6,182,212,0.12) 0%,transparent 55%)"},
+  {bg:"linear-gradient(135deg,#071b0d 0%,#0f2a14 40%,#162307 100%)", accent:"radial-gradient(ellipse at 25% 55%,rgba(34,197,94,0.1) 0%,transparent 55%)"},
+  {bg:"linear-gradient(135deg,#1c0a00 0%,#2d1200 40%,#1a0800 100%)", accent:"radial-gradient(ellipse at 20% 60%,rgba(249,115,22,0.12) 0%,transparent 55%)"},
+];
+
+const APPS=[
+  {id:"calculator",name:"Hesap Makinesi",icon:"🧮",size:{w:290,h:420}},
+  {id:"notepad",   name:"Not Defteri",   icon:"📝",size:{w:480,h:400}},
+  {id:"terminal",  name:"Terminal",      icon:"💻",size:{w:540,h:380}},
+  {id:"files",     name:"Dosya Gezgini", icon:"📁",size:{w:580,h:420}},
+  {id:"settings",  name:"Ayarlar",       icon:"⚙️",size:{w:360,h:420}},
+  {id:"about",     name:"MuGöl Hakkında",icon:"ℹ️",size:{w:340,h:460}},
+];
+
+/* ═══════════════════════════ ANA OS ═══════════════════════════ */
+
+function MuGolOS() {
+  const [wins,setWins]=useState([]);
+  const [active,setActive]=useState(null);
+  const [startOpen,setStartOpen]=useState(false);
+  const [time,setTime]=useState(new Date());
+  const [theme,setTheme]=useState(0);
+  const zRef=useRef(100);
+
+  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
+
+  const stars=useMemo(()=>Array.from({length:60},(_,i)=>({
+    id:i, x:Math.random()*100, y:Math.random()*90,
+    s:Math.random()>0.85?2:1, o:Math.random()*0.6+0.1,
+  })),[]);
+
+  const openApp=useCallback((app)=>{
+    setStartOpen(false);
+    const ex=wins.find(w=>w.id===app.id);
+    if(ex){setWins(prev=>prev.map(w=>w.id===app.id?{...w,minimized:false,z:++zRef.current}:w));setActive(app.id);return;}
+    const idx=wins.length;
+    setWins(prev=>[...prev,{id:app.id,app,pos:{x:80+idx*28,y:55+idx*22},minimized:false,z:++zRef.current}]);
+    setActive(app.id);
+  },[wins]);
+
+  const closeApp=useCallback((id)=>{setWins(prev=>prev.filter(w=>w.id!==id));setActive(null);},[]);
+  const minApp=useCallback((id)=>{setWins(prev=>prev.map(w=>w.id===id?{...w,minimized:true}:w));setActive(null);},[]);
+  const focusApp=useCallback((id)=>{setWins(prev=>prev.map(w=>w.id===id?{...w,z:++zRef.current}:w));setActive(id);},[]);
+
+  const getContent=(id)=>({
+    calculator:<Calculator/>,
+    notepad:<Notepad/>,
+    terminal:<Terminal/>,
+    files:<Files/>,
+    settings:<Settings theme={theme} onThemeChange={setTheme}/>,
+    about:<About/>,
+  }[id]);
+
+  const T=THEMES[theme];
+
+  return (
+    <div style={{width:"100%",height:"100vh",position:"relative",overflow:"hidden",fontFamily:"'Segoe UI',system-ui,sans-serif",background:T.bg}}>
+      <div style={{position:"absolute",inset:0,background:T.accent}}/>
+
+      {stars.map(s=>(
+        <div key={s.id} style={{position:"absolute",left:`${s.x}%`,top:`${s.y}%`,width:s.s,height:s.s,borderRadius:"50%",background:"#fff",opacity:s.o,pointerEvents:"none"}}/>
+      ))}
+
+      {/* Masaüstü ikonları */}
+      <div style={{position:"absolute",top:"14px",right:"14px",display:"flex",flexDirection:"column",gap:"6px",zIndex:1}}>
+        {APPS.map(app=>(
+          <div key={app.id} onDoubleClick={()=>openApp(app)}
+            style={{width:"76px",textAlign:"center",padding:"8px 4px",borderRadius:"10px",cursor:"pointer",userSelect:"none"}}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.1)"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div style={{fontSize:"26px"}}>{app.icon}</div>
+            <div style={{fontSize:"10px",color:"#e2e8f0",marginTop:"3px",textShadow:"0 1px 4px rgba(0,0,0,0.9)",lineHeight:1.3}}>{app.name}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Başlık */}
+      <div style={{position:"absolute",left:"24px",top:"20px",userSelect:"none",pointerEvents:"none"}}>
+        <div style={{fontSize:"15px",fontWeight:"700",background:"linear-gradient(90deg,#38bdf8,#22d3ee)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"0.06em"}}>MuGöl OS</div>
+        <div style={{fontSize:"11px",color:"#334155",marginTop:"2px"}}>{time.toLocaleDateString("tr-TR",{weekday:"long",day:"numeric",month:"long"})}</div>
+      </div>
+
+      {/* Pencereler */}
+      {wins.map(w=>(
+        <OSWindow key={w.id} win={w} isActive={active===w.id}
+          onClose={()=>closeApp(w.id)} onMin={()=>minApp(w.id)}
+          onFocus={()=>focusApp(w.id)} appContent={getContent(w.id)}/>
+      ))}
+
+      {/* Başlat menüsü */}
+      {startOpen && (
+        <>
+          <div onClick={()=>setStartOpen(false)} style={{position:"absolute",inset:0,zIndex:9990}}/>
+          <div style={{
+            position:"absolute",bottom:"56px",left:"8px",width:"360px",
+            background:"rgba(8,14,28,0.96)",backdropFilter:"blur(32px)",
+            border:"1px solid rgba(255,255,255,0.1)",borderRadius:"16px",padding:"16px",
+            boxShadow:"0 -12px 48px rgba(0,0,0,0.6)",zIndex:9999,
+          }}>
+            <input placeholder="🔍  Uygulama ara..." style={{
+              width:"100%",padding:"10px 14px",borderRadius:"10px",outline:"none",
+              background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",
+              color:"#e2e8f0",fontSize:"13px",marginBottom:"14px",
+            }}/>
+            <div style={{fontSize:"10px",color:"#475569",marginBottom:"8px",letterSpacing:"0.08em",fontWeight:"600"}}>UYGULAMALAR</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"16px"}}>
+              {APPS.map(app=>(
+                <div key={app.id} onClick={()=>openApp(app)}
+                  style={{textAlign:"center",padding:"12px 6px",borderRadius:"12px",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.15)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{fontSize:"28px"}}>{app.icon}</div>
+                  <div style={{fontSize:"10px",color:"#94a3b8",marginTop:"4px",lineHeight:1.3}}>{app.name}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:"12px",display:"flex",justifyContent:"flex-end",gap:"8px"}}>
+              <button style={{padding:"7px 14px",borderRadius:"8px",background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.2)",color:"#fbbf24",cursor:"pointer",fontSize:"12px"}}>🔄 Yeniden Başlat</button>
+              <button style={{padding:"7px 14px",borderRadius:"8px",background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",cursor:"pointer",fontSize:"12px"}}>🔌 Kapat</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Görev Çubuğu */}
+      <div style={{
+        position:"absolute",bottom:0,left:0,right:0,height:"48px",
+        background:"rgba(5,10,22,0.92)",backdropFilter:"blur(24px)",
+        borderTop:"1px solid rgba(255,255,255,0.07)",
+        display:"flex",alignItems:"center",padding:"0 8px",gap:"6px",zIndex:9998,
+      }}>
+        <button onClick={()=>setStartOpen(s=>!s)} style={{
+          width:"38px",height:"36px",borderRadius:"9px",
+          border:"1px solid rgba(255,255,255,0.1)",
+          background:startOpen?"rgba(14,165,233,0.25)":"rgba(255,255,255,0.07)",
+          cursor:"pointer",fontSize:"18px",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+        }}>🌊</button>
+
+        <div style={{width:"1px",height:"26px",background:"rgba(255,255,255,0.08)",flexShrink:0}}/>
+
+        <div style={{display:"flex",gap:"4px",flex:1,overflow:"hidden"}}>
+          {wins.map(w=>(
+            <button key={w.id} onClick={()=>{
+              if(w.minimized){setWins(prev=>prev.map(x=>x.id===w.id?{...x,minimized:false,z:++zRef.current}:x));setActive(w.id);}
+              else if(active===w.id){minApp(w.id);}
+              else{focusApp(w.id);}
+            }} style={{
+              padding:"4px 10px",borderRadius:"8px",maxWidth:"150px",minWidth:"60px",
+              background:active===w.id?"rgba(14,165,233,0.2)":"rgba(255,255,255,0.06)",
+              border:`1px solid ${active===w.id?"rgba(14,165,233,0.35)":"rgba(255,255,255,0.06)"}`,
+              color:"#e2e8f0",cursor:"pointer",fontSize:"12px",
+              display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",
+            }}>
+              <span style={{flexShrink:0}}>{w.app.icon}</span>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.app.name}</span>
+              {w.minimized&&<span style={{width:"4px",height:"4px",borderRadius:"50%",background:"#475569",flexShrink:0}}/>}
+            </button>
+          ))}
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:"10px",color:"#94a3b8",fontSize:"16px",flexShrink:0,paddingLeft:"6px",borderLeft:"1px solid rgba(255,255,255,0.07)"}}>
+          <span>📶</span><span>🔊</span><span>🔋</span>
+          <div style={{textAlign:"right",lineHeight:1.25}}>
+            <div style={{fontSize:"13px",fontWeight:"600",color:"#e2e8f0"}}>{time.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}</div>
+            <div style={{fontSize:"10px",color:"#475569"}}>{time.toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit",year:"numeric"})}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<MuGolOS/>);
+</script>
+</body>
+</html>
