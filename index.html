@@ -2,507 +2,1369 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>MuGöl OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { width: 100%; height: 100%; overflow: hidden; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; }
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
     input, textarea, select, button { font-family: inherit; }
+
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes scaleIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
+    @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.9} }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+
+    .win-anim { animation: scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1); }
+    .menu-anim { animation: slideUp 0.16s cubic-bezier(0.4,0,0.2,1); }
+
+    /* Touch optimizations */
+    button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+    /* Mobile landscape */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .taskbar { height: 40px !important; }
+      .taskbar-clock { display: none !important; }
+      .taskbar-time-compact { display: flex !important; }
+    }
+
+    /* Notification dot */
+    .notif-dot {
+      position: absolute; top: -2px; right: -2px;
+      width: 7px; height: 7px; background: #ef4444;
+      border-radius: 50%; border: 1.5px solid rgba(5,10,22,0.9);
+    }
+
+    /* Glass effect */
+    .glass {
+      background: rgba(12, 20, 40, 0.85);
+      backdrop-filter: blur(32px) saturate(1.6);
+      -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    }
+    .glass-light {
+      background: rgba(20, 32, 60, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    /* Resize handle */
+    .resize-handle {
+      position: absolute; bottom: 0; right: 0;
+      width: 14px; height: 14px; cursor: nwse-resize;
+      opacity: 0.4;
+    }
+    .resize-handle::after {
+      content: '';
+      position: absolute; bottom: 3px; right: 3px;
+      width: 6px; height: 6px;
+      border-right: 2px solid rgba(255,255,255,0.5);
+      border-bottom: 2px solid rgba(255,255,255,0.5);
+    }
+
+    /* Tooltip */
+    .tooltip { position: relative; }
+    .tooltip::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.85); color: #e2e8f0;
+      font-size: 11px; padding: 4px 8px; border-radius: 5px;
+      white-space: nowrap; pointer-events: none; opacity: 0;
+      transition: opacity 0.15s; font-family: 'Inter', sans-serif;
+    }
+    .tooltip:hover::after { opacity: 1; }
+
+    /* Context menu */
+    .ctx-item:hover { background: rgba(14,165,233,0.2) !important; }
   </style>
 </head>
 <body>
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+const { useState, useEffect, useRef, useMemo, useCallback, useReducer } = React;
 
-/* ═══════════════════════════ UYGULAMALAR ═══════════════════════════ */
-
+/* ═══════════════════════ CALCULATOR ═══════════════════════ */
 function Calculator() {
   const [display, setDisplay] = useState("0");
   const [prev, setPrev] = useState(null);
   const [op, setOp] = useState(null);
   const [fresh, setFresh] = useState(true);
+  const [history, setHistory] = useState([]);
 
-  const push = (n) => { setDisplay(fresh ? String(n) : display === "0" ? String(n) : display + n); setFresh(false); };
-  const setOperation = (o) => { setPrev(parseFloat(display)); setOp(o); setFresh(true); };
+  const push = (n) => {
+    if (display.length >= 12 && !fresh) return;
+    setDisplay(fresh ? String(n) : display === "0" ? String(n) : display + n);
+    setFresh(false);
+  };
+  const setOperation = (o) => {
+    setPrev(parseFloat(display));
+    setOp(o);
+    setFresh(true);
+  };
   const equals = () => {
     if (!op || prev === null) return;
     const c = parseFloat(display);
-    const r = op === "+" ? prev+c : op === "−" ? prev-c : op === "×" ? prev*c : prev/c;
-    setDisplay(String(parseFloat(r.toFixed(10))));
+    const res = op === "+" ? prev+c : op === "−" ? prev-c : op === "×" ? prev*c : c===0 ? "Hata" : prev/c;
+    const entry = `${prev} ${op} ${c} = ${typeof res === "number" ? parseFloat(res.toFixed(10)) : res}`;
+    if (typeof res === "number") {
+      setHistory(h => [entry, ...h].slice(0, 5));
+      setDisplay(String(parseFloat(res.toFixed(10))));
+    } else {
+      setDisplay(res);
+    }
     setOp(null); setPrev(null); setFresh(true);
   };
   const clear = () => { setDisplay("0"); setPrev(null); setOp(null); setFresh(true); };
+  const backspace = () => {
+    if (fresh || display.length === 1) { setDisplay("0"); setFresh(true); return; }
+    setDisplay(display.slice(0,-1) || "0");
+  };
 
-  const Btn = ({ label, onClick, variant="num" }) => {
-    const bg = variant==="op" ? "rgba(14,165,233,0.75)" : variant==="eq" ? "#06b6d4" : variant==="fn" ? "rgba(148,163,184,0.2)" : "rgba(255,255,255,0.09)";
+  const Btn = ({ label, onClick, variant="num", span2=false }) => {
+    const styles = {
+      op: { bg: "rgba(14,165,233,0.2)", hov: "rgba(14,165,233,0.35)", border: "rgba(14,165,233,0.25)", color: "#38bdf8" },
+      eq: { bg: "rgba(6,182,212,0.8)", hov: "rgba(6,182,212,1)", border: "transparent", color: "#fff" },
+      fn: { bg: "rgba(148,163,184,0.1)", hov: "rgba(148,163,184,0.2)", border: "rgba(255,255,255,0.06)", color: "#94a3b8" },
+      num: { bg: "rgba(255,255,255,0.06)", hov: "rgba(255,255,255,0.12)", border: "rgba(255,255,255,0.06)", color: "#e2e8f0" },
+    }[variant];
+    const [hov, setHov] = useState(false);
     return (
-      <button onClick={onClick} style={{
-        padding:"14px 0", fontSize:"16px", fontWeight:"600", borderRadius:"10px",
-        border:"1px solid rgba(255,255,255,0.08)", cursor:"pointer", background:bg, color:"#f1f5f9",
-        ...(label==="0" ? {gridColumn:"span 2"} : {})
-      }}>{label}</button>
+      <button
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        onTouchStart={()=>setHov(true)} onTouchEnd={()=>setHov(false)}
+        onClick={onClick}
+        style={{
+          padding:"0", height:"48px", fontSize:"17px", fontWeight:"500",
+          borderRadius:"10px", border:`1px solid ${styles.border}`,
+          cursor:"pointer", background:hov?styles.hov:styles.bg, color:styles.color,
+          transition:"all 0.1s", gridColumn: span2?"span 2":"auto",
+          letterSpacing:"-0.01em",
+        }}
+      >{label}</button>
     );
   };
 
   return (
-    <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:"8px"}}>
-      <div style={{background:"rgba(0,0,0,0.35)",borderRadius:"10px",padding:"16px",textAlign:"right",fontFamily:"monospace"}}>
-        {op && <div style={{fontSize:"11px",color:"#64748b",marginBottom:"4px"}}>{prev} {op}</div>}
-        <div style={{fontSize:"32px",color:"#f1f5f9",overflow:"hidden",textOverflow:"ellipsis"}}>{display}</div>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+      {/* Display */}
+      <div style={{padding:"16px 16px 12px",flexShrink:0}}>
+        <div style={{
+          background:"rgba(0,0,0,0.3)", borderRadius:"12px", padding:"14px 16px",
+          border:"1px solid rgba(255,255,255,0.06)"
+        }}>
+          {op && (
+            <div style={{fontSize:"12px",color:"#475569",marginBottom:"3px",fontFamily:"'JetBrains Mono',monospace"}}>
+              {prev} {op}
+            </div>
+          )}
+          <div style={{
+            fontSize:display.length > 10 ? "22px" : "32px",
+            color:"#f1f5f9", fontFamily:"'JetBrains Mono',monospace",
+            textAlign:"right", overflow:"hidden", textOverflow:"ellipsis",
+            fontWeight:"300", letterSpacing:"-0.02em",
+          }}>{display}</div>
+        </div>
+        {history.length > 0 && (
+          <div style={{marginTop:"8px",maxHeight:"50px",overflow:"auto"}}>
+            {history.map((h,i)=>(
+              <div key={i} style={{fontSize:"10px",color:"#334155",textAlign:"right",lineHeight:1.8}}>{h}</div>
+            ))}
+          </div>
+        )}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"6px"}}>
-        <Btn label="C" onClick={clear} variant="fn"/>
-        <Btn label="+/−" onClick={()=>setDisplay(String(-parseFloat(display)))} variant="fn"/>
-        <Btn label="%" onClick={()=>setDisplay(String(parseFloat(display)/100))} variant="fn"/>
-        <Btn label="÷" onClick={()=>setOperation("÷")} variant="op"/>
-        {["7","8","9"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
-        <Btn label="×" onClick={()=>setOperation("×")} variant="op"/>
-        {["4","5","6"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
-        <Btn label="−" onClick={()=>setOperation("−")} variant="op"/>
-        {["1","2","3"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
-        <Btn label="+" onClick={()=>setOperation("+")} variant="op"/>
-        <Btn label="0" onClick={()=>push("0")}/>
-        <Btn label="." onClick={()=>{ if(!display.includes(".")){setDisplay(display+"."); setFresh(false); }}}/>
-        <Btn label="=" onClick={equals} variant="eq"/>
+      {/* Buttons */}
+      <div style={{padding:"0 12px 12px",flex:1,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"6px"}}>
+          <Btn label="C" onClick={clear} variant="fn"/>
+          <Btn label="+/−" onClick={()=>setDisplay(String(-parseFloat(display)))} variant="fn"/>
+          <Btn label="%" onClick={()=>setDisplay(String(parseFloat(display)/100))} variant="fn"/>
+          <Btn label="÷" onClick={()=>setOperation("÷")} variant="op"/>
+          {["7","8","9"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
+          <Btn label="×" onClick={()=>setOperation("×")} variant="op"/>
+          {["4","5","6"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
+          <Btn label="−" onClick={()=>setOperation("−")} variant="op"/>
+          {["1","2","3"].map(n=><Btn key={n} label={n} onClick={()=>push(n)}/>)}
+          <Btn label="+" onClick={()=>setOperation("+")} variant="op"/>
+          <Btn label="⌫" onClick={backspace} variant="fn"/>
+          <Btn label="0" onClick={()=>push("0")}/>
+          <Btn label="." onClick={()=>{ if(!display.includes(".")){setDisplay(display+"."); setFresh(false); }}}/>
+          <Btn label="=" onClick={equals} variant="eq"/>
+        </div>
       </div>
     </div>
   );
 }
 
+/* ═══════════════════════ NOTEPAD ═══════════════════════ */
 function Notepad() {
   const [text, setText] = useState("Merhaba MuGöl OS! 🌊\n\nBuraya dilediğin notları yazabilirsin.\n\n— Keyifli kullanımlar.");
+  const [saved, setSaved] = useState(false);
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+
+  const save = () => { setSaved(true); setTimeout(()=>setSaved(false), 2000); };
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      {/* Toolbar */}
+      <div style={{
+        display:"flex",gap:"4px",padding:"6px 10px",
+        borderBottom:"1px solid rgba(255,255,255,0.06)",
+        background:"rgba(255,255,255,0.02)",flexShrink:0,
+      }}>
+        {[["Kaydet","💾",save],["Temizle","🗑️",()=>setText("")],["Kopyala","📋",()=>navigator.clipboard?.writeText(text)]].map(([label,icon,fn])=>(
+          <button key={label} onClick={fn} style={{
+            padding:"4px 10px",borderRadius:"7px",fontSize:"12px",cursor:"pointer",
+            background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)",
+            color:"#94a3b8",display:"flex",alignItems:"center",gap:"4px",
+            transition:"all 0.1s",
+          }}
+          onMouseEnter={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.12)"; e.currentTarget.style.color="#e2e8f0"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.06)"; e.currentTarget.style.color="#94a3b8"; }}
+          >{icon} {label}</button>
+        ))}
+        {saved && <span style={{fontSize:"12px",color:"#22c55e",alignSelf:"center",marginLeft:"6px"}}>✓ Kaydedildi</span>}
+      </div>
+      {/* Editor */}
       <textarea value={text} onChange={e=>setText(e.target.value)} style={{
         flex:1, background:"transparent", border:"none", outline:"none",
-        color:"#e2e8f0", fontFamily:"'Courier New',monospace", fontSize:"14px",
-        resize:"none", padding:"14px", lineHeight:"1.75",
+        color:"#e2e8f0", fontFamily:"'JetBrains Mono',monospace", fontSize:"13.5px",
+        resize:"none", padding:"14px 16px", lineHeight:"1.8",
       }}/>
-      <div style={{padding:"4px 14px",borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:"11px",color:"#475569",display:"flex",gap:"16px"}}>
-        <span>{text.length} karakter</span><span>{words} kelime</span><span>{text.split("\n").length} satır</span>
+      {/* Status bar */}
+      <div style={{
+        padding:"4px 14px", borderTop:"1px solid rgba(255,255,255,0.06)",
+        fontSize:"11px", color:"#334155",
+        display:"flex", gap:"16px", flexShrink:0,
+        background:"rgba(0,0,0,0.2)",
+      }}>
+        <span>{text.length} karakter</span>
+        <span>{words} kelime</span>
+        <span>{text.split("\n").length} satır</span>
       </div>
     </div>
   );
 }
 
+/* ═══════════════════════ TERMINAL ═══════════════════════ */
 function Terminal() {
-  const [lines, setLines] = useState(["MuGöl OS Terminal v1.0  —  'help' yazın", ""]);
+  const [lines, setLines] = useState([
+    {t:"sys", v:"MuGöl OS Terminal v1.0"},
+    {t:"sys", v:"'help' yazın — komutlar için"},
+    {t:"empty"},
+  ]);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState([]);
   const [hIdx, setHIdx] = useState(-1);
   const endRef = useRef(null);
+  const inputRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({behavior:"smooth"}); }, [lines]);
 
   const CMDS = {
-    help:    ()=>["Komutlar:","  help · about · clear · date · whoami · ls · echo <metin> · neofetch"],
-    about:   ()=>["MuGöl OS 1.0.0 — Tarayıcı tabanlı işletim sistemi"],
-    date:    ()=>[new Date().toLocaleString("tr-TR")],
-    whoami:  ()=>["mugol-kullanici"],
-    ls:      ()=>["Belgeler/   İndirmeler/   Masaüstü/   Müzik/   Resimler/   Videolar/"],
+    help:    ()=>[{t:"info",v:"Kullanılabilir komutlar:"},{t:"code",v:"  help · about · clear · date · whoami · ls · echo <metin> · neofetch · cal"}],
+    about:   ()=>[{t:"info",v:"MuGöl OS 1.0.0 — Tarayıcı tabanlı işletim sistemi"}],
+    date:    ()=>[{t:"out",v:new Date().toLocaleString("tr-TR")}],
+    whoami:  ()=>[{t:"out",v:"mugol-kullanici"}],
+    ls:      ()=>[{t:"code",v:"📁 Belgeler  📁 İndirmeler  📁 Masaüstü"},{t:"code",v:"📁 Müzik     📁 Resimler    📁 Videolar"}],
+    cal:     ()=>{
+      const now = new Date();
+      return [{t:"out",v:`    ${now.toLocaleString("tr-TR",{month:"long",year:"numeric"})}`},{t:"code",v:"Pzt  Sal  Çar  Per  Cum  Cmt  Paz"}];
+    },
     neofetch:()=>[
-      "        🌊        mugol@mugol-os",
-      "                 ─────────────",
-      "                 OS: MuGöl OS 1.0",
-      "                 Kernel: MuGöl 5.15.0",
-      "                 Shell: mgsh 1.0",
-      "                 CPU: MuGöl Core i9",
-      "                 RAM: 16 GB",
+      {t:"cyan",v:"    🌊  mugol@mugol-os"},
+      {t:"cyan",v:"        ─────────────"},
+      {t:"cyan",v:"        OS: MuGöl OS 1.0"},
+      {t:"cyan",v:"        Kernel: MuGöl 5.15.0"},
+      {t:"cyan",v:"        Shell: mgsh 1.0"},
+      {t:"cyan",v:"        Resolution: "+window.screen.width+"x"+window.screen.height},
+      {t:"cyan",v:"        RAM: "+Math.round(performance.memory?.jsHeapSizeLimit/1024/1024||2048)+" MB"},
     ],
   };
 
   const run = (raw) => {
     const parts = raw.trim().split(" ");
     const cmd = parts[0].toLowerCase();
-    const newLines = [...lines, `$ ${raw}`];
+    let newLines = [...lines, {t:"prompt", v:raw}];
     if (cmd==="clear") { setLines([]); return; }
-    if (cmd==="echo") { newLines.push(parts.slice(1).join(" ")); }
+    if (cmd==="echo") { newLines.push({t:"out", v:parts.slice(1).join(" ")}); }
     else if (CMDS[cmd]) { newLines.push(...CMDS[cmd]()); }
-    else if (cmd) { newLines.push(`Komut bulunamadı: ${parts[0]}`); }
-    newLines.push("");
+    else if (cmd) { newLines.push({t:"err", v:`Komut bulunamadı: ${parts[0]}`}); }
+    newLines.push({t:"empty"});
     setLines(newLines);
   };
 
+  const lineColor = {sys:"#475569", info:"#94a3b8", code:"#e2e8f0", out:"#a3e635", err:"#f87171", cyan:"#22d3ee", prompt:"#e2e8f0", empty:"#e2e8f0"};
+
   return (
-    <div style={{background:"#060d16",height:"100%",padding:"12px 14px",fontFamily:"'Courier New',monospace",fontSize:"13px",color:"#4ade80",display:"flex",flexDirection:"column"}}>
+    <div
+      onClick={()=>inputRef.current?.focus()}
+      style={{
+        background:"#060d16", height:"100%", padding:"12px 14px",
+        fontFamily:"'JetBrains Mono',monospace", fontSize:"12.5px",
+        display:"flex", flexDirection:"column", cursor:"text",
+      }}>
       <div style={{flex:1,overflow:"auto"}}>
-        {lines.map((l,i)=><div key={i}>{l||"\u00A0"}</div>)}
+        {lines.map((l,i)=>(
+          <div key={i} style={{
+            color:lineColor[l.t]||"#e2e8f0",
+            lineHeight:"1.7",
+            display:"flex", alignItems:"flex-start", gap:"6px",
+          }}>
+            {l.t==="prompt" && <span style={{color:"#22d3ee",flexShrink:0}}>$ </span>}
+            <span>{l.v||"\u00A0"}</span>
+          </div>
+        ))}
         <div ref={endRef}/>
       </div>
-      <div style={{display:"flex",gap:"6px",alignItems:"center",borderTop:"1px solid rgba(74,222,128,0.1)",paddingTop:"8px",marginTop:"4px"}}>
-        <span style={{color:"#22d3ee"}}>$</span>
-        <input value={input} onChange={e=>setInput(e.target.value)}
+      <div style={{
+        display:"flex", gap:"6px", alignItems:"center",
+        borderTop:"1px solid rgba(74,222,128,0.08)",
+        paddingTop:"8px", marginTop:"4px",
+      }}>
+        <span style={{color:"#22d3ee",flexShrink:0}}>$</span>
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e=>setInput(e.target.value)}
           onKeyDown={e=>{
-            if(e.key==="Enter"){if(input.trim())setHistory(h=>[input,...h]); run(input); setInput(""); setHIdx(-1);}
-            if(e.key==="ArrowUp"){const ni=Math.min(hIdx+1,history.length-1); setHIdx(ni); setInput(history[ni]||"");}
-            if(e.key==="ArrowDown"){const ni=Math.max(hIdx-1,-1); setHIdx(ni); setInput(ni===-1?"":history[ni]);}
+            if(e.key==="Enter"){
+              if(input.trim()) setHistory(h=>[input,...h]);
+              run(input); setInput(""); setHIdx(-1);
+            }
+            if(e.key==="ArrowUp"){ const ni=Math.min(hIdx+1,history.length-1); setHIdx(ni); setInput(history[ni]||""); }
+            if(e.key==="ArrowDown"){ const ni=Math.max(hIdx-1,-1); setHIdx(ni); setInput(ni===-1?"":history[ni]); }
+            if(e.key==="Tab"){ e.preventDefault(); const cmds=Object.keys(CMDS); const m=cmds.find(c=>c.startsWith(input)); if(m) setInput(m); }
           }}
-          style={{flex:1,background:"transparent",border:"none",outline:"none",color:"#4ade80",fontFamily:"'Courier New',monospace",fontSize:"13px"}}
-          autoFocus spellCheck={false}/>
+          style={{
+            flex:1, background:"transparent", border:"none", outline:"none",
+            color:"#4ade80", fontFamily:"'JetBrains Mono',monospace", fontSize:"12.5px",
+            caretColor:"#22d3ee",
+          }}
+          autoFocus spellCheck={false} autoComplete="off"
+        />
+        <span style={{
+          width:"8px",height:"16px",background:"#22d3ee",
+          animation:"blink 1.2s infinite",borderRadius:"1px",flexShrink:0,
+        }}/>
       </div>
     </div>
   );
 }
 
+/* ═══════════════════════ FILES ═══════════════════════ */
 function Files() {
   const tree = {
-    "Belgeler":[["rapor.docx","📄"],["notlar.txt","📝"],["sunum.pptx","📊"]],
-    "İndirmeler":[["mugol_os.iso","💿"],["müzik.mp3","🎵"],["fotoğraf.jpg","🖼️"],["arşiv.zip","📦"]],
-    "Masaüstü":[["kısayol.lnk","🔗"],["README.txt","📝"]],
-    "Resimler":[["tatil.jpg","🖼️"],["aile.png","🖼️"],["ekran.png","🖼️"]],
-    "Müzik":[["playlist.m3u","🎵"],["favori.mp3","🎵"]],
-    "Videolar":[["film.mp4","🎬"],["kısa.mov","🎬"]],
+    "Belgeler": [["rapor.docx","📄"],["notlar.txt","📝"],["sunum.pptx","📊"],["analiz.xlsx","📊"]],
+    "İndirmeler": [["mugol_os.iso","💿"],["müzik.mp3","🎵"],["fotoğraf.jpg","🖼️"],["arşiv.zip","📦"],["kurulum.exe","⚙️"]],
+    "Masaüstü": [["kısayol.lnk","🔗"],["README.txt","📝"],["proje.zip","📦"]],
+    "Resimler": [["tatil.jpg","🖼️"],["aile.png","🖼️"],["ekran.png","🖼️"],["logo.svg","🎨"]],
+    "Müzik": [["playlist.m3u","🎵"],["favori.mp3","🎵"],["album.mp3","🎵"]],
+    "Videolar": [["film.mp4","🎬"],["kısa.mov","🎬"],["konferans.mp4","🎬"]],
   };
-  const [folder,setFolder]=useState(null);
-  const [sel,setSel]=useState(null);
+  const [folder, setFolder] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [view, setView] = useState("grid"); // grid | list
+  const [search, setSearch] = useState("");
+
+  const allFiles = useMemo(() => {
+    if (!folder) return null;
+    return tree[folder].filter(([name]) => !search || name.toLowerCase().includes(search.toLowerCase()));
+  }, [folder, search]);
 
   return (
     <div style={{display:"flex",height:"100%",fontSize:"13px",color:"#e2e8f0"}}>
-      <div style={{width:"145px",borderRight:"1px solid rgba(255,255,255,0.08)",padding:"8px",display:"flex",flexDirection:"column",gap:"2px",overflow:"auto"}}>
-        {[["Ana Klasör","🏠"],...Object.keys(tree).map(k=>[k,"📁"])].map(([name,icon])=>(
-          <div key={name} onClick={()=>{setFolder(name==="Ana Klasör"?null:name);setSel(null);}}
-            style={{padding:"6px 8px",borderRadius:"7px",cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",
-              background:(folder===name||(name==="Ana Klasör"&&!folder))?"rgba(14,165,233,0.2)":"transparent",
-              color:(folder===name||(name==="Ana Klasör"&&!folder))?"#38bdf8":"#cbd5e1"}}>
-            <span>{icon}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+      {/* Sidebar */}
+      <div style={{
+        width:"150px", borderRight:"1px solid rgba(255,255,255,0.07)",
+        padding:"8px 6px", display:"flex", flexDirection:"column", gap:"1px",
+        overflow:"auto", background:"rgba(0,0,0,0.15)", flexShrink:0,
+      }}>
+        <div style={{fontSize:"10px",color:"#334155",padding:"4px 8px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"4px"}}>KONUMLAR</div>
+        {[["Ana Klasör","🏠","#38bdf8"],...Object.keys(tree).map(k=>[k,"📁","#94a3b8"])].map(([name,icon,col])=>(
+          <div
+            key={name}
+            onClick={()=>{setFolder(name==="Ana Klasör"?null:name); setSel(null); setSearch(""); }}
+            style={{
+              padding:"6px 8px", borderRadius:"7px", cursor:"pointer",
+              display:"flex", alignItems:"center", gap:"7px",
+              background:(folder===name||(name==="Ana Klasör"&&!folder))?"rgba(14,165,233,0.18)":"transparent",
+              color:(folder===name||(name==="Ana Klasör"&&!folder))?"#38bdf8":"#94a3b8",
+              transition:"all 0.1s",
+            }}
+            onMouseEnter={e=>{ if(!((folder===name)||(name==="Ana Klasör"&&!folder))) e.currentTarget.style.background="rgba(255,255,255,0.06)"; }}
+            onMouseLeave={e=>{ if(!((folder===name)||(name==="Ana Klasör"&&!folder))) e.currentTarget.style.background="transparent"; }}
+          >
+            <span style={{fontSize:"14px",flexShrink:0}}>{icon}</span>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:"12px"}}>{name}</span>
           </div>
         ))}
       </div>
-      <div style={{flex:1,padding:"10px",overflow:"auto"}}>
-        {!folder ? (
-          <div style={{display:"flex",flexWrap:"wrap",gap:"10px"}}>
-            {Object.keys(tree).map(f=>(
-              <div key={f} onDoubleClick={()=>setFolder(f)} onClick={()=>setSel(f)}
-                style={{width:"76px",textAlign:"center",cursor:"pointer",padding:"8px 4px",borderRadius:"10px",
-                  background:sel===f?"rgba(14,165,233,0.2)":"transparent",border:`2px solid ${sel===f?"rgba(14,165,233,0.4)":"transparent"}`}}>
-                <div style={{fontSize:"32px"}}>📁</div>
-                <div style={{fontSize:"11px",marginTop:"4px",color:"#cbd5e1",wordBreak:"break-all",lineHeight:1.3}}>{f}</div>
-              </div>
+
+      {/* Main */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {/* Toolbar */}
+        <div style={{
+          display:"flex",alignItems:"center",gap:"6px",padding:"7px 10px",
+          borderBottom:"1px solid rgba(255,255,255,0.06)",flexShrink:0,
+          background:"rgba(255,255,255,0.02)",
+        }}>
+          {folder && (
+            <button
+              onClick={()=>{setFolder(null);setSel(null);setSearch("");}}
+              style={{
+                background:"rgba(255,255,255,0.08)",border:"none",color:"#94a3b8",
+                padding:"4px 8px",borderRadius:"6px",cursor:"pointer",fontSize:"13px",
+              }}
+            >←</button>
+          )}
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:"4px",
+            background:"rgba(255,255,255,0.06)",borderRadius:"7px",padding:"4px 10px",
+            border:"1px solid rgba(255,255,255,0.07)"}}>
+            <span style={{color:"#475569",fontSize:"12px"}}>🔍</span>
+            <input
+              value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder="Ara..."
+              style={{background:"transparent",border:"none",outline:"none",color:"#e2e8f0",fontSize:"12px",flex:1}}
+            />
+          </div>
+          <div style={{display:"flex",gap:"3px"}}>
+            {[["⊞","grid"],["☰","list"]].map(([icon,v])=>(
+              <button key={v} onClick={()=>setView(v)} style={{
+                padding:"4px 7px",borderRadius:"6px",fontSize:"13px",cursor:"pointer",
+                background:view===v?"rgba(14,165,233,0.2)":"transparent",
+                border:"none",color:view===v?"#38bdf8":"#475569",
+              }}>{icon}</button>
             ))}
           </div>
-        ) : (
-          <>
-            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
-              <button onClick={()=>{setFolder(null);setSel(null);}} style={{background:"rgba(255,255,255,0.08)",border:"none",color:"#94a3b8",padding:"4px 10px",borderRadius:"6px",cursor:"pointer",fontSize:"12px"}}>← Geri</button>
-              <span style={{color:"#475569",fontSize:"11px"}}>{folder}</span>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:"10px"}}>
-              {tree[folder].map(([name,icon])=>(
-                <div key={name} onClick={()=>setSel(name)}
-                  style={{width:"76px",textAlign:"center",cursor:"pointer",padding:"8px 4px",borderRadius:"10px",
-                    background:sel===name?"rgba(14,165,233,0.2)":"transparent",border:`2px solid ${sel===name?"rgba(14,165,233,0.4)":"transparent"}`}}>
-                  <div style={{fontSize:"28px"}}>{icon}</div>
-                  <div style={{fontSize:"10px",marginTop:"4px",color:"#cbd5e1",wordBreak:"break-all",lineHeight:1.3}}>{name}</div>
+        </div>
+
+        {/* Breadcrumb */}
+        <div style={{padding:"5px 12px",fontSize:"11px",color:"#334155",flexShrink:0,display:"flex",gap:"4px",alignItems:"center"}}>
+          <span style={{cursor:"pointer",color:"#475569"}} onClick={()=>{setFolder(null);setSel(null);}}>🏠</span>
+          {folder && <><span>/</span><span style={{color:"#64748b"}}>{folder}</span></>}
+        </div>
+
+        {/* Content */}
+        <div style={{flex:1,padding:"6px 10px 10px",overflow:"auto"}}>
+          {!folder ? (
+            <div style={{display:"flex",flexWrap:"wrap",gap:"10px",padding:"4px"}}>
+              {Object.keys(tree).map(f=>(
+                <div
+                  key={f}
+                  onDoubleClick={()=>{setFolder(f);setSel(null);}}
+                  onClick={()=>setSel(f)}
+                  style={{
+                    width:"78px", textAlign:"center", cursor:"pointer", padding:"10px 6px",
+                    borderRadius:"10px", transition:"all 0.1s",
+                    background:sel===f?"rgba(14,165,233,0.2)":"rgba(255,255,255,0.03)",
+                    border:`1.5px solid ${sel===f?"rgba(14,165,233,0.4)":"rgba(255,255,255,0.05)"}`,
+                  }}
+                >
+                  <div style={{fontSize:"30px"}}>📁</div>
+                  <div style={{fontSize:"11px",marginTop:"4px",color:"#cbd5e1",wordBreak:"break-all",lineHeight:1.3}}>{f}</div>
+                  <div style={{fontSize:"9px",color:"#334155",marginTop:"2px"}}>{tree[f].length} öğe</div>
                 </div>
               ))}
             </div>
-          </>
+          ) : view === "grid" ? (
+            <div style={{display:"flex",flexWrap:"wrap",gap:"8px",padding:"4px"}}>
+              {(allFiles||[]).map(([name,icon])=>(
+                <div
+                  key={name}
+                  onClick={()=>setSel(name)}
+                  style={{
+                    width:"72px", textAlign:"center", cursor:"pointer", padding:"8px 4px",
+                    borderRadius:"9px", transition:"all 0.1s",
+                    background:sel===name?"rgba(14,165,233,0.2)":"rgba(255,255,255,0.03)",
+                    border:`1.5px solid ${sel===name?"rgba(14,165,233,0.4)":"rgba(255,255,255,0.04)"}`,
+                  }}
+                >
+                  <div style={{fontSize:"26px"}}>{icon}</div>
+                  <div style={{fontSize:"10px",marginTop:"4px",color:"#cbd5e1",wordBreak:"break-all",lineHeight:1.2}}>{name}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:"1px"}}>
+              {(allFiles||[]).map(([name,icon])=>(
+                <div
+                  key={name}
+                  onClick={()=>setSel(name)}
+                  style={{
+                    display:"flex", alignItems:"center", gap:"10px",
+                    padding:"7px 10px", borderRadius:"8px", cursor:"pointer",
+                    background:sel===name?"rgba(14,165,233,0.15)":"transparent",
+                    transition:"all 0.1s",
+                  }}
+                  onMouseEnter={e=>{ if(sel!==name) e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
+                  onMouseLeave={e=>{ if(sel!==name) e.currentTarget.style.background="transparent"; }}
+                >
+                  <span style={{fontSize:"18px",flexShrink:0}}>{icon}</span>
+                  <span style={{flex:1,fontSize:"12.5px",color:sel===name?"#38bdf8":"#e2e8f0"}}>{name}</span>
+                  <span style={{fontSize:"10px",color:"#334155"}}>—</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════ ABOUT ═══════════════════════ */
+function About() {
+  const specs=[
+    ["İşlemci","MuGöl Core i9 @ 4.2GHz","⚡"],
+    ["Bellek","16 GB DDR5-5600","💾"],
+    ["Depolama","512 GB NVMe SSD","💿"],
+    ["GPU","MuGöl Graphics Pro 8GB","🎮"],
+    ["Kernel","MuGöl 5.15.0","🐧"],
+    ["Kabuk","mgsh 1.0.0","💻"],
+    ["Masaüstü","MuGöl DE 1.0","🖥️"],
+    ["Çözünürlük",`${window.screen.width}×${window.screen.height}`,"📐"],
+    ["Konum","Türkiye 🇹🇷","🌍"],
+  ];
+  return (
+    <div style={{padding:"20px",color:"#e2e8f0",overflow:"auto",height:"100%"}}>
+      <div style={{textAlign:"center",marginBottom:"20px"}}>
+        <div style={{
+          fontSize:"56px", marginBottom:"8px",
+          filter:"drop-shadow(0 0 20px rgba(34,211,238,0.4))",
+          animation:"float 3s ease-in-out infinite",
+          display:"inline-block",
+        }}>🌊</div>
+        <h2 style={{
+          margin:"0 0 4px",fontSize:"22px",fontWeight:"700",letterSpacing:"-0.02em",
+          background:"linear-gradient(90deg,#38bdf8,#22d3ee,#a78bfa)",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+        }}>MuGöl OS</h2>
+        <p style={{color:"#475569",margin:0,fontSize:"12px"}}>Sürüm 1.0.0 · 2026</p>
+        <div style={{display:"flex",justifyContent:"center",gap:"8px",marginTop:"12px"}}>
+          {["🌊 MuGöl","⚡ Hızlı","🔒 Güvenli"].map(tag=>(
+            <span key={tag} style={{
+              padding:"3px 10px",borderRadius:"20px",fontSize:"11px",
+              background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.2)",
+              color:"#38bdf8",
+            }}>{tag}</span>
+          ))}
+        </div>
+      </div>
+      <div style={{
+        background:"rgba(255,255,255,0.03)",borderRadius:"12px",
+        overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)",
+      }}>
+        {specs.map(([k,v,icon],i)=>(
+          <div key={k} style={{
+            display:"flex",justifyContent:"space-between",alignItems:"center",
+            padding:"9px 14px",
+            borderBottom:i<specs.length-1?"1px solid rgba(255,255,255,0.04)":"none",
+            fontSize:"12.5px",
+            background:i%2===0?"transparent":"rgba(255,255,255,0.01)",
+          }}>
+            <span style={{color:"#64748b",display:"flex",alignItems:"center",gap:"7px"}}>
+              <span style={{fontSize:"13px"}}>{icon}</span>{k}
+            </span>
+            <span style={{color:"#e2e8f0",fontWeight:"500"}}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <p style={{textAlign:"center",color:"#1e293b",fontSize:"11px",marginTop:"16px"}}>© 2026 MuGöl Systems. Tüm hakları saklıdır.</p>
+    </div>
+  );
+}
+
+/* ═══════════════════════ SETTINGS ═══════════════════════ */
+function Settings({theme,onThemeChange}) {
+  const [notif, setNotif] = useState(true);
+  const [sound, setSound] = useState(true);
+  const [wifi, setWifi] = useState(true);
+  const [bright, setBright] = useState(75);
+  const [vol, setVol] = useState(60);
+  const [tab, setTab] = useState("appearance");
+
+  const themes=[["🌌","Uzay","#6366f1"],["🌊","Okyanus","#0ea5e9"],["🌲","Orman","#22c55e"],["🔥","Ateş","#f97316"]];
+
+  const Toggle=({val,set})=>(
+    <div
+      onClick={()=>set(!val)}
+      style={{
+        width:"38px",height:"20px",borderRadius:"10px",
+        background:val?"#0ea5e9":"rgba(255,255,255,0.12)",
+        cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,
+      }}
+    >
+      <div style={{
+        position:"absolute",top:"2px",left:val?"20px":"2px",
+        width:"16px",height:"16px",borderRadius:"50%",
+        background:"#fff",transition:"left 0.2s",
+        boxShadow:"0 1px 4px rgba(0,0,0,0.3)",
+      }}/>
+    </div>
+  );
+
+  const Slider=({val,set,min=0,max=100})=>(
+    <div style={{display:"flex",alignItems:"center",gap:"10px",flex:1}}>
+      <input
+        type="range" min={min} max={max} value={val}
+        onChange={e=>set(Number(e.target.value))}
+        style={{flex:1,accentColor:"#0ea5e9",height:"4px"}}
+      />
+      <span style={{fontSize:"12px",color:"#94a3b8",minWidth:"30px",textAlign:"right"}}>{val}%</span>
+    </div>
+  );
+
+  const tabs = [["appearance","🎨","Görünüm"],["system","⚙️","Sistem"],["network","📶","Ağ"]];
+
+  return (
+    <div style={{display:"flex",height:"100%",color:"#e2e8f0"}}>
+      {/* Tab sidebar */}
+      <div style={{
+        width:"130px",borderRight:"1px solid rgba(255,255,255,0.07)",
+        padding:"8px 6px",display:"flex",flexDirection:"column",gap:"2px",
+        background:"rgba(0,0,0,0.15)",flexShrink:0,
+      }}>
+        {tabs.map(([id,icon,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{
+            display:"flex",alignItems:"center",gap:"8px",
+            padding:"8px 10px",borderRadius:"8px",cursor:"pointer",
+            background:tab===id?"rgba(14,165,233,0.2)":"transparent",
+            border:"none",color:tab===id?"#38bdf8":"#94a3b8",
+            fontSize:"12.5px",textAlign:"left",transition:"all 0.1s",
+          }}
+          onMouseEnter={e=>{ if(tab!==id) e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
+          onMouseLeave={e=>{ if(tab!==id) e.currentTarget.style.background="transparent"; }}
+          ><span>{icon}</span>{label}</button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,padding:"16px",overflow:"auto"}}>
+        {tab==="appearance" && (
+          <div>
+            <p style={{color:"#475569",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>TEMA</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"8px",marginBottom:"20px"}}>
+              {themes.map(([icon,name,col],i)=>(
+                <button key={i} onClick={()=>onThemeChange(i)} style={{
+                  padding:"12px 8px",borderRadius:"10px",cursor:"pointer",
+                  border:`2px solid ${theme===i?col:"rgba(255,255,255,0.07)"}`,
+                  background:theme===i?`${col}18`:"rgba(255,255,255,0.04)",
+                  color:"#e2e8f0",display:"flex",flexDirection:"column",alignItems:"center",gap:"5px",
+                  transition:"all 0.15s",
+                }}>
+                  <span style={{fontSize:"22px"}}>{icon}</span>
+                  <span style={{fontSize:"11px",color:theme===i?col:"#94a3b8"}}>{name}</span>
+                </button>
+              ))}
+            </div>
+            <p style={{color:"#475569",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"10px"}}>PARLAKLIK</p>
+            <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"16px"}}>
+              <span style={{fontSize:"14px"}}>🌑</span>
+              <Slider val={bright} set={setBright}/>
+              <span style={{fontSize:"14px"}}>☀️</span>
+            </div>
+            <p style={{color:"#475569",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"8px"}}>DİL</p>
+            <select style={{
+              width:"100%",padding:"9px 12px",
+              background:"rgba(255,255,255,0.07)",
+              border:"1px solid rgba(255,255,255,0.1)",
+              color:"#e2e8f0",borderRadius:"8px",fontSize:"13px",outline:"none",
+            }}>
+              <option>Türkçe</option><option>English</option><option>Deutsch</option><option>Français</option>
+            </select>
+          </div>
+        )}
+        {tab==="system" && (
+          <div>
+            <p style={{color:"#475569",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>SİSTEM</p>
+            {[["Bildirimler",notif,setNotif,"🔔"],["Ses Efektleri",sound,setSound,"🔊"],["Otomatik Güncelleme",true,()=>{},"🔄"]].map(([label,val,set,icon])=>(
+              <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:"10px",border:"1px solid rgba(255,255,255,0.05)"}}>
+                <span style={{fontSize:"13px",display:"flex",alignItems:"center",gap:"8px"}}><span>{icon}</span>{label}</span>
+                <Toggle val={val} set={set}/>
+              </div>
+            ))}
+            <p style={{color:"#475569",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"10px",marginTop:"16px"}}>SES</p>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <span style={{fontSize:"14px"}}>🔇</span>
+              <Slider val={vol} set={setVol}/>
+              <span style={{fontSize:"14px"}}>🔊</span>
+            </div>
+          </div>
+        )}
+        {tab==="network" && (
+          <div>
+            <p style={{color:"#475569",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>BAĞLANTI</p>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",padding:"12px 14px",background:"rgba(255,255,255,0.04)",borderRadius:"10px",border:"1px solid rgba(255,255,255,0.06)"}}>
+              <span style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <span style={{fontSize:"18px"}}>📶</span>
+                <div>
+                  <div style={{fontSize:"13px"}}>Wi-Fi</div>
+                  <div style={{fontSize:"11px",color:"#475569"}}>{wifi?"MuGöl_Network":"Bağlı değil"}</div>
+                </div>
+              </span>
+              <Toggle val={wifi} set={setWifi}/>
+            </div>
+            {wifi && (
+              <div>
+                <p style={{color:"#475569",fontSize:"11px",marginBottom:"8px"}}>AĞLAR</p>
+                {[["MuGöl_Network","🔒","Bağlı","#22c55e"],["HomeWifi_5G","🔒","","#94a3b8"],["Komşu_2.4G","🔒","","#94a3b8"]].map(([name,icon,status,col])=>(
+                  <div key={name} style={{
+                    display:"flex",justifyContent:"space-between",alignItems:"center",
+                    padding:"9px 12px",borderRadius:"8px",marginBottom:"4px",cursor:"pointer",
+                    background:status?"rgba(34,197,94,0.08)":"rgba(255,255,255,0.03)",
+                    border:`1px solid ${status?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.05)"}`,
+                  }}>
+                    <span style={{fontSize:"12.5px"}}>{icon} {name}</span>
+                    <span style={{fontSize:"11px",color:col}}>{status||"Bağlan"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function About() {
-  const specs=[
-    ["İşlemci","MuGöl Core i9 @ 4.2GHz"],["Bellek","16 GB DDR5-5600"],
-    ["Depolama","512 GB NVMe SSD"],["GPU","MuGöl Graphics Pro 8GB"],
-    ["Kernel","MuGöl 5.15.0"],["Kabuk","mgsh 1.0.0"],
-    ["Masaüstü","MuGöl DE 1.0"],["Konum","Türkiye 🇹🇷"],
-  ];
-  return (
-    <div style={{padding:"24px",color:"#e2e8f0",overflow:"auto",height:"100%"}}>
-      <div style={{textAlign:"center",marginBottom:"20px"}}>
-        <div style={{fontSize:"60px",marginBottom:"6px"}}>🌊</div>
-        <h2 style={{margin:"0 0 2px",fontSize:"24px",background:"linear-gradient(90deg,#38bdf8,#22d3ee)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>MuGöl OS</h2>
-        <p style={{color:"#64748b",margin:0,fontSize:"13px"}}>Sürüm 1.0.0 · 2026</p>
-      </div>
-      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"12px",overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)"}}>
-        {specs.map(([k,v],i)=>(
-          <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",borderBottom:i<specs.length-1?"1px solid rgba(255,255,255,0.05)":"none",fontSize:"13px"}}>
-            <span style={{color:"#64748b"}}>{k}</span><span>{v}</span>
-          </div>
-        ))}
-      </div>
-      <p style={{textAlign:"center",color:"#334155",fontSize:"11px",marginTop:"16px"}}>© 2026 MuGöl Systems. Tüm hakları saklıdır.</p>
-    </div>
-  );
-}
+/* ═══════════════════════ WINDOW ═══════════════════════ */
+function OSWindow({win, isActive, onClose, onMin, onFocus, appContent, isMobile}) {
+  const [pos, setPos] = useState(win.pos);
+  const [size, setSize] = useState({w: win.app.size.w, h: win.app.size.h});
+  const [maximized, setMaximized] = useState(isMobile);
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
 
-function Settings({theme,onThemeChange}) {
-  const [notif,setNotif]=useState(true);
-  const [sound,setSound]=useState(true);
-  const themes=[["🌌","Uzay"],["🌊","Okyanus"],["🌲","Orman"],["🔥","Ateş"]];
-  const Toggle=({val,set})=>(
-    <div onClick={()=>set(!val)} style={{width:"40px",height:"22px",borderRadius:"11px",background:val?"#0ea5e9":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
-      <div style={{position:"absolute",top:"3px",left:val?"20px":"3px",width:"16px",height:"16px",borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
-    </div>
-  );
-  return (
-    <div style={{padding:"20px",color:"#e2e8f0",overflow:"auto",height:"100%"}}>
-      <p style={{color:"#94a3b8",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>GÖRÜNÜM</p>
-      <p style={{fontSize:"13px",marginBottom:"10px"}}>Tema</p>
-      <div style={{display:"flex",gap:"8px",marginBottom:"20px"}}>
-        {themes.map(([icon,name],i)=>(
-          <button key={i} onClick={()=>onThemeChange(i)} style={{flex:1,padding:"10px 4px",borderRadius:"10px",cursor:"pointer",
-            border:`2px solid ${theme===i?"#22d3ee":"rgba(255,255,255,0.08)"}`,
-            background:theme===i?"rgba(34,211,238,0.1)":"rgba(255,255,255,0.04)",
-            color:"#e2e8f0",fontSize:"20px",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
-            <span>{icon}</span><span style={{fontSize:"10px",color:"#94a3b8"}}>{name}</span>
-          </button>
-        ))}
-      </div>
-      <p style={{color:"#94a3b8",fontSize:"11px",letterSpacing:"0.08em",fontWeight:"600",marginBottom:"12px"}}>SİSTEM</p>
-      {[["Bildirimler",notif,setNotif],["Ses Efektleri",sound,setSound]].map(([label,val,set])=>(
-        <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
-          <span style={{fontSize:"13px"}}>{label}</span><Toggle val={val} set={set}/>
-        </div>
-      ))}
-      <p style={{fontSize:"13px",marginBottom:"8px"}}>Dil</p>
-      <select style={{width:"100%",padding:"9px 12px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",color:"#e2e8f0",borderRadius:"8px",fontSize:"13px",outline:"none"}}>
-        <option>Türkçe</option><option>English</option><option>Deutsch</option>
-      </select>
-    </div>
-  );
-}
-
-/* ═══════════════════════════ PENCERE ═══════════════════════════ */
-
-function OSWindow({win,isActive,onClose,onMin,onFocus,appContent}) {
-  const [pos,setPos]=useState(win.pos);
-  const [maximized,setMaximized]=useState(false);
-  const posRef=useRef(pos);
-  posRef.current=pos;
-
-  const onTitleMouseDown=useCallback((e)=>{
-    if(maximized)return;
+  // Drag
+  const onTitleMouseDown = useCallback((e) => {
+    if (maximized) return;
+    if (e.target.tagName === "BUTTON") return;
     onFocus();
-    const ox=e.clientX-posRef.current.x, oy=e.clientY-posRef.current.y;
-    const mv=(me)=>setPos({x:me.clientX-ox,y:me.clientY-oy});
-    const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};
+    const startX = e.clientX - posRef.current.x;
+    const startY = e.clientY - posRef.current.y;
+    const mv = (me) => setPos({x: Math.max(0, me.clientX-startX), y: Math.max(0, me.clientY-startY)});
+    const up = () => { document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up); };
     document.addEventListener("mousemove",mv);
     document.addEventListener("mouseup",up);
   },[maximized,onFocus]);
 
-  if(win.minimized)return null;
+  // Touch drag
+  const onTouchStart = useCallback((e) => {
+    if (maximized) return;
+    onFocus();
+    const t = e.touches[0];
+    const startX = t.clientX - posRef.current.x;
+    const startY = t.clientY - posRef.current.y;
+    const mv = (te) => {
+      const tt = te.touches[0];
+      setPos({x: Math.max(0, tt.clientX-startX), y: Math.max(0, tt.clientY-startY)});
+    };
+    const up = () => { document.removeEventListener("touchmove",mv); document.removeEventListener("touchend",up); };
+    document.addEventListener("touchmove",mv,{passive:false});
+    document.addEventListener("touchend",up);
+  },[maximized,onFocus]);
+
+  // Resize
+  const onResizeDown = useCallback((e) => {
+    e.stopPropagation();
+    const startX = e.clientX; const startY = e.clientY;
+    const sw = sizeRef.current.w; const sh = sizeRef.current.h;
+    const mv = (me) => setSize({w: Math.max(250, sw+(me.clientX-startX)), h: Math.max(200, sh+(me.clientY-startY))});
+    const up = () => { document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up); };
+    document.addEventListener("mousemove",mv);
+    document.addEventListener("mouseup",up);
+  },[]);
+
+  if (win.minimized) return null;
+
+  const TASKBAR_H = isMobile ? 40 : 48;
 
   return (
-    <div onMouseDown={onFocus} style={{
-      position:"absolute",
-      left:maximized?0:pos.x, top:maximized?0:pos.y,
-      width:maximized?"100%":win.app.size.w,
-      height:maximized?"calc(100% - 48px)":win.app.size.h,
-      background:"rgba(10,18,35,0.88)",
-      backdropFilter:"blur(24px) saturate(1.4)",
-      borderRadius:maximized?0:"12px",
-      border:`1px solid ${isActive?"rgba(34,211,238,0.25)":"rgba(255,255,255,0.08)"}`,
-      boxShadow:isActive?"0 24px 64px rgba(0,0,0,0.65), 0 0 0 1px rgba(34,211,238,0.1)":"0 8px 32px rgba(0,0,0,0.4)",
-      zIndex:win.z, overflow:"hidden", display:"flex", flexDirection:"column",
-      transition:maximized?"all 0.22s cubic-bezier(0.4,0,0.2,1)":"box-shadow 0.15s",
-    }}>
-      <div onMouseDown={onTitleMouseDown} style={{
-        height:"38px",display:"flex",alignItems:"center",padding:"0 10px",gap:"8px",
-        background:isActive?"rgba(14,165,233,0.1)":"rgba(255,255,255,0.03)",
-        borderBottom:"1px solid rgba(255,255,255,0.07)",
-        userSelect:"none",cursor:maximized?"default":"move",flexShrink:0,
-      }}>
-        <div style={{display:"flex",gap:"6px"}}>
-          {[["#ef4444",onClose],["#f59e0b",onMin],["#22c55e",()=>setMaximized(m=>!m)]].map(([c,fn],i)=>(
-            <button key={i} onClick={fn} style={{width:"12px",height:"12px",borderRadius:"50%",background:c,border:"none",cursor:"pointer"}}/>
-          ))}
+    <div
+      className="win-anim"
+      onMouseDown={onFocus}
+      onTouchStart={onFocus}
+      style={{
+        position:"absolute",
+        left: maximized ? 0 : pos.x,
+        top: maximized ? 0 : pos.y,
+        width: maximized ? "100%" : size.w,
+        height: maximized ? `calc(100% - ${TASKBAR_H}px)` : size.h,
+        background:"rgba(10,18,35,0.9)",
+        backdropFilter:"blur(28px) saturate(1.5)",
+        WebkitBackdropFilter:"blur(28px) saturate(1.5)",
+        borderRadius: maximized ? 0 : "12px",
+        border:`1px solid ${isActive?"rgba(56,189,248,0.22)":"rgba(255,255,255,0.07)"}`,
+        boxShadow: isActive
+          ? "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(34,211,238,0.08), inset 0 1px 0 rgba(255,255,255,0.06)"
+          : "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)",
+        zIndex: win.z,
+        overflow:"hidden",
+        display:"flex",
+        flexDirection:"column",
+        transition: maximized ? "all 0.22s cubic-bezier(0.4,0,0.2,1)" : "box-shadow 0.15s, border-color 0.15s",
+      }}
+    >
+      {/* Title Bar */}
+      <div
+        onMouseDown={onTitleMouseDown}
+        onTouchStart={onTouchStart}
+        style={{
+          height:"38px",
+          display:"flex", alignItems:"center", padding:"0 10px", gap:"0",
+          background: isActive
+            ? "linear-gradient(180deg, rgba(30,50,90,0.6) 0%, rgba(14,165,233,0.08) 100%)"
+            : "rgba(255,255,255,0.02)",
+          borderBottom:"1px solid rgba(255,255,255,0.06)",
+          userSelect:"none", cursor: maximized ? "default" : "move",
+          flexShrink:0,
+        }}
+      >
+        {/* Traffic lights (macOS style) */}
+        <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+          {[
+            {c:"#ef4444",h:"#ff6b6b",fn:onClose,tip:"Kapat"},
+            {c:"#f59e0b",h:"#fcd34d",fn:onMin,tip:"Simge Durumuna Küçült"},
+            {c:"#22c55e",h:"#4ade80",fn:()=>setMaximized(m=>!m),tip:maximized?"Pencere":"Tam Ekran"},
+          ].map(({c,h,fn,tip},i)=>{
+            const [hov,setHov]=useState(false);
+            return (
+              <button
+                key={i}
+                onClick={(e)=>{e.stopPropagation();fn();}}
+                onMouseEnter={()=>setHov(true)}
+                onMouseLeave={()=>setHov(false)}
+                data-tip={tip}
+                className="tooltip"
+                style={{
+                  width:"13px",height:"13px",borderRadius:"50%",
+                  background:hov?h:c,
+                  border:"none",cursor:"pointer",
+                  transition:"background 0.1s",
+                  boxShadow:`0 0 0 1px rgba(0,0,0,0.2) inset`,
+                }}
+              />
+            );
+          })}
         </div>
-        <span style={{flex:1,textAlign:"center",fontSize:"12px",color:isActive?"#e2e8f0":"#64748b",fontWeight:"500"}}>
+
+        {/* Title */}
+        <span style={{
+          flex:1, textAlign:"center", fontSize:"12.5px",
+          color: isActive ? "#e2e8f0" : "#475569",
+          fontWeight:"500", letterSpacing:"-0.01em",
+        }}>
           {win.app.icon} {win.app.name}
         </span>
+
         <div style={{width:"46px"}}/>
       </div>
+
+      {/* Content */}
       <div style={{flex:1,overflow:"hidden"}}>{appContent}</div>
+
+      {/* Resize handle */}
+      {!maximized && <div className="resize-handle" onMouseDown={onResizeDown}/>}
     </div>
   );
 }
 
-/* ═══════════════════════════ TEMALAR ═══════════════════════════ */
-
+/* ═══════════════════════ THEMES ═══════════════════════ */
 const THEMES=[
-  {bg:"linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#0c1a2e 65%,#042f2e 100%)", accent:"radial-gradient(ellipse at 20% 50%,rgba(14,165,233,0.09) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(139,92,246,0.08) 0%,transparent 50%)"},
-  {bg:"linear-gradient(135deg,#0c2340 0%,#0f3d5c 40%,#05262d 100%)", accent:"radial-gradient(ellipse at 30% 60%,rgba(6,182,212,0.12) 0%,transparent 55%)"},
-  {bg:"linear-gradient(135deg,#071b0d 0%,#0f2a14 40%,#162307 100%)", accent:"radial-gradient(ellipse at 25% 55%,rgba(34,197,94,0.1) 0%,transparent 55%)"},
-  {bg:"linear-gradient(135deg,#1c0a00 0%,#2d1200 40%,#1a0800 100%)", accent:"radial-gradient(ellipse at 20% 60%,rgba(249,115,22,0.12) 0%,transparent 55%)"},
+  {
+    bg:"linear-gradient(145deg,#050d1a 0%,#0f172a 30%,#1e1b4b 65%,#042f2e 100%)",
+    accent:"radial-gradient(ellipse at 15% 50%,rgba(14,165,233,0.1) 0%,transparent 55%),radial-gradient(ellipse at 85% 15%,rgba(139,92,246,0.1) 0%,transparent 50%)",
+    name:"Uzay",
+  },
+  {
+    bg:"linear-gradient(145deg,#040f1f 0%,#0c2340 40%,#0f3d5c 70%,#032020 100%)",
+    accent:"radial-gradient(ellipse at 25% 60%,rgba(6,182,212,0.13) 0%,transparent 55%),radial-gradient(ellipse at 75% 30%,rgba(14,165,233,0.07) 0%,transparent 50%)",
+    name:"Okyanus",
+  },
+  {
+    bg:"linear-gradient(145deg,#030d05 0%,#071b0d 35%,#0f2a14 65%,#162307 100%)",
+    accent:"radial-gradient(ellipse at 20% 55%,rgba(34,197,94,0.12) 0%,transparent 55%)",
+    name:"Orman",
+  },
+  {
+    bg:"linear-gradient(145deg,#0d0400 0%,#1c0a00 35%,#2d1200 65%,#1a0800 100%)",
+    accent:"radial-gradient(ellipse at 20% 55%,rgba(249,115,22,0.13) 0%,transparent 55%),radial-gradient(ellipse at 80% 20%,rgba(239,68,68,0.08) 0%,transparent 50%)",
+    name:"Ateş",
+  },
 ];
 
 const APPS=[
-  {id:"calculator",name:"Hesap Makinesi",icon:"🧮",size:{w:290,h:420}},
-  {id:"notepad",   name:"Not Defteri",   icon:"📝",size:{w:480,h:400}},
-  {id:"terminal",  name:"Terminal",      icon:"💻",size:{w:540,h:380}},
-  {id:"files",     name:"Dosya Gezgini", icon:"📁",size:{w:580,h:420}},
-  {id:"settings",  name:"Ayarlar",       icon:"⚙️",size:{w:360,h:420}},
-  {id:"about",     name:"MuGöl Hakkında",icon:"ℹ️",size:{w:340,h:460}},
+  {id:"calculator", name:"Hesap Makinesi", icon:"🧮", size:{w:290,h:430}},
+  {id:"notepad",    name:"Not Defteri",    icon:"📝", size:{w:500,h:420}},
+  {id:"terminal",   name:"Terminal",       icon:"💻", size:{w:560,h:400}},
+  {id:"files",      name:"Dosya Gezgini",  icon:"📁", size:{w:620,h:440}},
+  {id:"settings",   name:"Ayarlar",        icon:"⚙️", size:{w:420,h:460}},
+  {id:"about",      name:"MuGöl Hakkında", icon:"ℹ️", size:{w:360,h:500}},
 ];
 
-/* ═══════════════════════════ ANA OS ═══════════════════════════ */
+/* ═══════════════════════ NOTIFICATION ═══════════════════════ */
+function Notification({notif,onDismiss}) {
+  useEffect(()=>{ const t=setTimeout(onDismiss,4000); return ()=>clearTimeout(t); },[]);
+  return (
+    <div style={{
+      position:"fixed",top:"54px",right:"14px",
+      background:"rgba(10,18,35,0.95)",
+      backdropFilter:"blur(20px)",
+      border:"1px solid rgba(255,255,255,0.1)",
+      borderRadius:"12px",padding:"12px 14px",
+      display:"flex",alignItems:"center",gap:"10px",
+      boxShadow:"0 8px 32px rgba(0,0,0,0.5)",
+      zIndex:99999,
+      animation:"fadeIn 0.2s ease",
+      maxWidth:"280px",
+    }}>
+      <span style={{fontSize:"20px",flexShrink:0}}>{notif.icon}</span>
+      <div>
+        <div style={{fontSize:"12.5px",fontWeight:"600",color:"#e2e8f0",marginBottom:"2px"}}>{notif.title}</div>
+        <div style={{fontSize:"11px",color:"#64748b"}}>{notif.msg}</div>
+      </div>
+      <button onClick={onDismiss} style={{
+        background:"none",border:"none",color:"#475569",cursor:"pointer",
+        fontSize:"14px",padding:"2px",marginLeft:"4px",flexShrink:0,
+      }}>✕</button>
+    </div>
+  );
+}
 
+/* ═══════════════════════ CONTEXT MENU ═══════════════════════ */
+function ContextMenu({x,y,onClose}) {
+  const items = [
+    {label:"Yeni Klasör",icon:"📁"},
+    {label:"Yeni Dosya",icon:"📄"},
+    {sep:true},
+    {label:"Görünüm",icon:"👁️",sub:["Büyük İkonlar","Küçük İkonlar","Liste"]},
+    {label:"Sırala",icon:"↕️"},
+    {sep:true},
+    {label:"Masaüstü Bilgileri",icon:"ℹ️"},
+  ];
+  return (
+    <>
+      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:19998}}/>
+      <div
+        className="menu-anim"
+        style={{
+          position:"fixed",left:x,top:y,
+          background:"rgba(10,18,35,0.97)",
+          backdropFilter:"blur(32px)",
+          border:"1px solid rgba(255,255,255,0.1)",
+          borderRadius:"10px",padding:"5px",
+          minWidth:"180px",
+          boxShadow:"0 16px 48px rgba(0,0,0,0.6)",
+          zIndex:19999,
+        }}
+      >
+        {items.map((item,i)=> item.sep
+          ? <div key={i} style={{height:"1px",background:"rgba(255,255,255,0.07)",margin:"4px 0"}}/>
+          : (
+            <div
+              key={i}
+              className="ctx-item"
+              onClick={onClose}
+              style={{
+                display:"flex",alignItems:"center",gap:"9px",
+                padding:"7px 12px",borderRadius:"7px",cursor:"pointer",
+                fontSize:"12.5px",color:"#e2e8f0",
+                background:"transparent",
+                transition:"background 0.1s",
+              }}
+            >
+              <span style={{fontSize:"14px",flexShrink:0}}>{item.icon}</span>
+              <span style={{flex:1}}>{item.label}</span>
+              {item.sub && <span style={{color:"#475569",fontSize:"11px"}}>▶</span>}
+            </div>
+          )
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════ MAIN OS ═══════════════════════ */
 function MuGolOS() {
-  const [wins,setWins]=useState([]);
-  const [active,setActive]=useState(null);
-  const [startOpen,setStartOpen]=useState(false);
-  const [time,setTime]=useState(new Date());
-  const [theme,setTheme]=useState(0);
-  const zRef=useRef(100);
+  const [wins, setWins] = useState([]);
+  const [active, setActive] = useState(null);
+  const [startOpen, setStartOpen] = useState(false);
+  const [time, setTime] = useState(new Date());
+  const [theme, setTheme] = useState(0);
+  const [notif, setNotif] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const zRef = useRef(100);
+  const [screenW, setScreenW] = useState(window.innerWidth);
+  const [screenH, setScreenH] = useState(window.innerHeight);
 
-  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
+  const isMobile = screenW < 768;
+  const isLandscape = screenW > screenH;
+  const TASKBAR_H = (isMobile && isLandscape) ? 40 : 48;
 
-  const stars=useMemo(()=>Array.from({length:60},(_,i)=>({
+  useEffect(()=>{
+    const t = setInterval(()=>setTime(new Date()),1000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  useEffect(()=>{
+    const handler = () => {
+      setScreenW(window.innerWidth);
+      setScreenH(window.innerHeight);
+    };
+    window.addEventListener("resize",handler);
+    return ()=>window.removeEventListener("resize",handler);
+  },[]);
+
+  const stars = useMemo(()=>Array.from({length:isMobile?30:60},(_,i)=>({
     id:i, x:Math.random()*100, y:Math.random()*90,
-    s:Math.random()>0.85?2:1, o:Math.random()*0.6+0.1,
-  })),[]);
+    s:Math.random()>0.85?2:1, o:Math.random()*0.5+0.1,
+    d:Math.random()*8+4,
+  })),[isMobile]);
 
-  const openApp=useCallback((app)=>{
+  const showNotif = useCallback((title,msg,icon="🔔")=>{
+    setNotif({title,msg,icon});
+  },[]);
+
+  const openApp = useCallback((app)=>{
     setStartOpen(false);
-    const ex=wins.find(w=>w.id===app.id);
-    if(ex){setWins(prev=>prev.map(w=>w.id===app.id?{...w,minimized:false,z:++zRef.current}:w));setActive(app.id);return;}
-    const idx=wins.length;
-    setWins(prev=>[...prev,{id:app.id,app,pos:{x:80+idx*28,y:55+idx*22},minimized:false,z:++zRef.current}]);
+    const ex = wins.find(w=>w.id===app.id);
+    if (ex) {
+      setWins(prev=>prev.map(w=>w.id===app.id?{...w,minimized:false,z:++zRef.current}:w));
+      setActive(app.id);
+      return;
+    }
+    const idx = wins.length;
+    const sw = window.innerWidth, sh = window.innerHeight;
+    const wx = Math.min(40+idx*24, sw-app.size.w-20);
+    const wy = Math.min(40+idx*20, sh-app.size.h-60);
+    setWins(prev=>[...prev,{id:app.id,app,pos:{x:Math.max(0,wx),y:Math.max(0,wy)},minimized:false,z:++zRef.current}]);
     setActive(app.id);
-  },[wins]);
+    showNotif(app.name,"Uygulama açıldı",app.icon);
+  },[wins,showNotif]);
 
-  const closeApp=useCallback((id)=>{setWins(prev=>prev.filter(w=>w.id!==id));setActive(null);},[]);
-  const minApp=useCallback((id)=>{setWins(prev=>prev.map(w=>w.id===id?{...w,minimized:true}:w));setActive(null);},[]);
-  const focusApp=useCallback((id)=>{setWins(prev=>prev.map(w=>w.id===id?{...w,z:++zRef.current}:w));setActive(id);},[]);
+  const closeApp = useCallback((id)=>{ setWins(prev=>prev.filter(w=>w.id!==id)); setActive(null); },[]);
+  const minApp = useCallback((id)=>{ setWins(prev=>prev.map(w=>w.id===id?{...w,minimized:true}:w)); setActive(null); },[]);
+  const focusApp = useCallback((id)=>{ setWins(prev=>prev.map(w=>w.id===id?{...w,z:++zRef.current}:w)); setActive(id); },[]);
 
-  const getContent=(id)=>({
-    calculator:<Calculator/>,
-    notepad:<Notepad/>,
-    terminal:<Terminal/>,
-    files:<Files/>,
-    settings:<Settings theme={theme} onThemeChange={setTheme}/>,
-    about:<About/>,
-  }[id]);
+  const getContent = useCallback((id) => ({
+    calculator: <Calculator/>,
+    notepad:    <Notepad/>,
+    terminal:   <Terminal/>,
+    files:      <Files/>,
+    settings:   <Settings theme={theme} onThemeChange={setTheme}/>,
+    about:      <About/>,
+  }[id]),[theme]);
 
-  const T=THEMES[theme];
+  const T = THEMES[theme];
+
+  const filteredApps = useMemo(()=>
+    APPS.filter(a=>a.name.toLowerCase().includes(searchQuery.toLowerCase()) || a.id.toLowerCase().includes(searchQuery.toLowerCase()))
+  ,[searchQuery]);
+
+  const nonMinWins = wins.filter(w=>!w.minimized);
 
   return (
-    <div style={{width:"100%",height:"100vh",position:"relative",overflow:"hidden",fontFamily:"'Segoe UI',system-ui,sans-serif",background:T.bg}}>
-      <div style={{position:"absolute",inset:0,background:T.accent}}/>
+    <div
+      onContextMenu={(e)=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY});}}
+      style={{
+        width:"100%", height:"100vh", position:"relative",
+        overflow:"hidden", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif",
+        background:T.bg,
+      }}
+    >
+      {/* Background layers */}
+      <div style={{position:"absolute",inset:0,background:T.accent,pointerEvents:"none"}}/>
 
+      {/* Ambient glow */}
+      <div style={{
+        position:"absolute",inset:0,pointerEvents:"none",
+        background:"radial-gradient(ellipse 60% 40% at 50% 0%,rgba(14,165,233,0.04) 0%,transparent 70%)",
+      }}/>
+
+      {/* Stars */}
       {stars.map(s=>(
-        <div key={s.id} style={{position:"absolute",left:`${s.x}%`,top:`${s.y}%`,width:s.s,height:s.s,borderRadius:"50%",background:"#fff",opacity:s.o,pointerEvents:"none"}}/>
+        <div key={s.id} style={{
+          position:"absolute", left:`${s.x}%`, top:`${s.y}%`,
+          width:s.s, height:s.s, borderRadius:"50%",
+          background:"#fff", opacity:s.o, pointerEvents:"none",
+          animation:`pulse ${s.d}s ease-in-out infinite`,
+          animationDelay:`${Math.random()*4}s`,
+        }}/>
       ))}
 
-      {/* Masaüstü ikonları */}
-      <div style={{position:"absolute",top:"14px",right:"14px",display:"flex",flexDirection:"column",gap:"6px",zIndex:1}}>
-        {APPS.map(app=>(
-          <div key={app.id} onDoubleClick={()=>openApp(app)}
-            style={{width:"76px",textAlign:"center",padding:"8px 4px",borderRadius:"10px",cursor:"pointer",userSelect:"none"}}
-            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.1)"}
-            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <div style={{fontSize:"26px"}}>{app.icon}</div>
-            <div style={{fontSize:"10px",color:"#e2e8f0",marginTop:"3px",textShadow:"0 1px 4px rgba(0,0,0,0.9)",lineHeight:1.3}}>{app.name}</div>
-          </div>
-        ))}
+      {/* Desktop icons — right side */}
+      {!isMobile && (
+        <div style={{
+          position:"absolute", top:"14px", right:"14px",
+          display:"flex", flexDirection:"column", gap:"6px", zIndex:1,
+        }}>
+          {APPS.map(app=>(
+            <div
+              key={app.id}
+              onDoubleClick={()=>openApp(app)}
+              onClick={()=>{}}
+              style={{
+                width:"76px", textAlign:"center", padding:"8px 4px",
+                borderRadius:"10px", cursor:"pointer", userSelect:"none",
+                transition:"all 0.15s",
+              }}
+              onMouseEnter={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.1)"; e.currentTarget.style.transform="scale(1.04)"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background="transparent"; e.currentTarget.style.transform="scale(1)"; }}
+            >
+              <div style={{fontSize:"26px"}}>{app.icon}</div>
+              <div style={{fontSize:"10.5px",color:"#e2e8f0",marginTop:"3px",textShadow:"0 1px 6px rgba(0,0,0,0.9)",lineHeight:1.3,fontWeight:"500"}}>{app.name}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* OS Logo */}
+      <div style={{position:"absolute",left:"20px",top:"18px",userSelect:"none",pointerEvents:"none",zIndex:1}}>
+        <div style={{
+          fontSize:"16px",fontWeight:"700",letterSpacing:"0.04em",
+          background:"linear-gradient(90deg,#38bdf8,#22d3ee,#818cf8)",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+        }}>MuGöl OS</div>
+        <div style={{fontSize:"11px",color:"#1e293b",marginTop:"1px"}}>
+          {time.toLocaleDateString("tr-TR",{weekday:"long",day:"numeric",month:"long"})}
+        </div>
       </div>
 
-      {/* Başlık */}
-      <div style={{position:"absolute",left:"24px",top:"20px",userSelect:"none",pointerEvents:"none"}}>
-        <div style={{fontSize:"15px",fontWeight:"700",background:"linear-gradient(90deg,#38bdf8,#22d3ee)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"0.06em"}}>MuGöl OS</div>
-        <div style={{fontSize:"11px",color:"#334155",marginTop:"2px"}}>{time.toLocaleDateString("tr-TR",{weekday:"long",day:"numeric",month:"long"})}</div>
-      </div>
-
-      {/* Pencereler */}
+      {/* Windows */}
       {wins.map(w=>(
-        <OSWindow key={w.id} win={w} isActive={active===w.id}
-          onClose={()=>closeApp(w.id)} onMin={()=>minApp(w.id)}
-          onFocus={()=>focusApp(w.id)} appContent={getContent(w.id)}/>
+        <OSWindow
+          key={w.id}
+          win={w}
+          isActive={active===w.id}
+          onClose={()=>closeApp(w.id)}
+          onMin={()=>minApp(w.id)}
+          onFocus={()=>focusApp(w.id)}
+          appContent={getContent(w.id)}
+          isMobile={isMobile}
+        />
       ))}
 
-      {/* Başlat menüsü */}
+      {/* Start Menu */}
       {startOpen && (
         <>
           <div onClick={()=>setStartOpen(false)} style={{position:"absolute",inset:0,zIndex:9990}}/>
-          <div style={{
-            position:"absolute",bottom:"56px",left:"8px",width:"360px",
-            background:"rgba(8,14,28,0.96)",backdropFilter:"blur(32px)",
-            border:"1px solid rgba(255,255,255,0.1)",borderRadius:"16px",padding:"16px",
-            boxShadow:"0 -12px 48px rgba(0,0,0,0.6)",zIndex:9999,
-          }}>
-            <input placeholder="🔍  Uygulama ara..." style={{
-              width:"100%",padding:"10px 14px",borderRadius:"10px",outline:"none",
-              background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",
-              color:"#e2e8f0",fontSize:"13px",marginBottom:"14px",
-            }}/>
-            <div style={{fontSize:"10px",color:"#475569",marginBottom:"8px",letterSpacing:"0.08em",fontWeight:"600"}}>UYGULAMALAR</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"16px"}}>
-              {APPS.map(app=>(
-                <div key={app.id} onClick={()=>openApp(app)}
-                  style={{textAlign:"center",padding:"12px 6px",borderRadius:"12px",cursor:"pointer"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.15)"}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <div style={{fontSize:"28px"}}>{app.icon}</div>
-                  <div style={{fontSize:"10px",color:"#94a3b8",marginTop:"4px",lineHeight:1.3}}>{app.name}</div>
+          <div
+            className="menu-anim"
+            style={{
+              position:"absolute",
+              bottom: `${TASKBAR_H+6}px`,
+              left:"8px",
+              width: isMobile ? "calc(100vw - 16px)" : "380px",
+              background:"rgba(7,13,26,0.97)",
+              backdropFilter:"blur(40px)",
+              WebkitBackdropFilter:"blur(40px)",
+              border:"1px solid rgba(255,255,255,0.1)",
+              borderRadius:"16px",
+              padding:"16px",
+              boxShadow:"0 -16px 60px rgba(0,0,0,0.7),inset 0 1px 0 rgba(255,255,255,0.06)",
+              zIndex:9999,
+            }}
+          >
+            {/* Search */}
+            <div style={{
+              display:"flex",alignItems:"center",gap:"8px",
+              background:"rgba(255,255,255,0.07)",
+              border:"1px solid rgba(255,255,255,0.1)",
+              borderRadius:"10px",padding:"9px 13px",marginBottom:"14px",
+            }}>
+              <span style={{color:"#475569"}}>🔍</span>
+              <input
+                value={searchQuery}
+                onChange={e=>setSearchQuery(e.target.value)}
+                placeholder="Uygulama ara..."
+                style={{
+                  flex:1,background:"transparent",border:"none",outline:"none",
+                  color:"#e2e8f0",fontSize:"13px",
+                }}
+                autoFocus
+              />
+              {searchQuery && (
+                <button onClick={()=>setSearchQuery("")} style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:"13px"}}>✕</button>
+              )}
+            </div>
+
+            <div style={{fontSize:"10px",color:"#334155",marginBottom:"8px",letterSpacing:"0.08em",fontWeight:"700"}}>UYGULAMALAR</div>
+            <div style={{
+              display:"grid",
+              gridTemplateColumns:`repeat(${isMobile?"4":"3"},1fr)`,
+              gap:"6px",marginBottom:"14px",
+            }}>
+              {filteredApps.map(app=>(
+                <div
+                  key={app.id}
+                  onClick={()=>openApp(app)}
+                  style={{
+                    textAlign:"center",padding:"12px 6px",borderRadius:"12px",cursor:"pointer",
+                    transition:"all 0.1s",
+                    background:"rgba(255,255,255,0.03)",
+                    border:"1px solid transparent",
+                  }}
+                  onMouseEnter={e=>{ e.currentTarget.style.background="rgba(14,165,233,0.14)"; e.currentTarget.style.borderColor="rgba(14,165,233,0.2)"; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor="transparent"; }}
+                >
+                  <div style={{fontSize:"26px"}}>{app.icon}</div>
+                  <div style={{fontSize:"10.5px",color:"#94a3b8",marginTop:"5px",lineHeight:1.3,fontWeight:"500"}}>{app.name}</div>
                 </div>
               ))}
             </div>
-            <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:"12px",display:"flex",justifyContent:"flex-end",gap:"8px"}}>
-              <button style={{padding:"7px 14px",borderRadius:"8px",background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.2)",color:"#fbbf24",cursor:"pointer",fontSize:"12px"}}>🔄 Yeniden Başlat</button>
-              <button style={{padding:"7px 14px",borderRadius:"8px",background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",cursor:"pointer",fontSize:"12px"}}>🔌 Kapat</button>
+
+            {/* Footer */}
+            <div style={{
+              borderTop:"1px solid rgba(255,255,255,0.07)",
+              paddingTop:"12px",
+              display:"flex",justifyContent:"space-between",alignItems:"center",
+            }}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <div style={{
+                  width:"28px",height:"28px",borderRadius:"50%",
+                  background:"linear-gradient(135deg,#38bdf8,#818cf8)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:"14px",
+                }}>🌊</div>
+                <span style={{fontSize:"12px",color:"#94a3b8",fontWeight:"500"}}>mugol-kullanici</span>
+              </div>
+              <div style={{display:"flex",gap:"6px"}}>
+                <button style={{
+                  padding:"6px 12px",borderRadius:"8px",fontSize:"12px",cursor:"pointer",
+                  background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.18)",
+                  color:"#fbbf24",
+                }}>🔄 Yeniden Başlat</button>
+                <button style={{
+                  padding:"6px 12px",borderRadius:"8px",fontSize:"12px",cursor:"pointer",
+                  background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.18)",
+                  color:"#f87171",
+                }}>⏻ Kapat</button>
+              </div>
             </div>
           </div>
         </>
       )}
 
-      {/* Görev Çubuğu */}
-      <div style={{
-        position:"absolute",bottom:0,left:0,right:0,height:"48px",
-        background:"rgba(5,10,22,0.92)",backdropFilter:"blur(24px)",
-        borderTop:"1px solid rgba(255,255,255,0.07)",
-        display:"flex",alignItems:"center",padding:"0 8px",gap:"6px",zIndex:9998,
-      }}>
-        <button onClick={()=>setStartOpen(s=>!s)} style={{
-          width:"38px",height:"36px",borderRadius:"9px",
-          border:"1px solid rgba(255,255,255,0.1)",
-          background:startOpen?"rgba(14,165,233,0.25)":"rgba(255,255,255,0.07)",
-          cursor:"pointer",fontSize:"18px",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-        }}>🌊</button>
+      {/* Taskbar */}
+      <div
+        className="taskbar"
+        style={{
+          position:"absolute",bottom:0,left:0,right:0,height:`${TASKBAR_H}px`,
+          background:"rgba(4,8,18,0.94)",
+          backdropFilter:"blur(32px)",
+          WebkitBackdropFilter:"blur(32px)",
+          borderTop:"1px solid rgba(255,255,255,0.07)",
+          display:"flex",alignItems:"center",padding:"0 8px",gap:"5px",
+          zIndex:9998,
+          boxShadow:"0 -2px 20px rgba(0,0,0,0.4)",
+        }}
+      >
+        {/* Start button */}
+        <button
+          onClick={()=>setStartOpen(s=>!s)}
+          style={{
+            width:"36px",height:"34px",borderRadius:"9px",
+            border:`1px solid ${startOpen?"rgba(14,165,233,0.4)":"rgba(255,255,255,0.09)"}`,
+            background:startOpen
+              ? "rgba(14,165,233,0.22)"
+              : "rgba(255,255,255,0.06)",
+            cursor:"pointer",fontSize:"17px",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            flexShrink:0,transition:"all 0.15s",
+          }}
+        >🌊</button>
 
-        <div style={{width:"1px",height:"26px",background:"rgba(255,255,255,0.08)",flexShrink:0}}/>
+        <div style={{width:"1px",height:"24px",background:"rgba(255,255,255,0.08)",flexShrink:0}}/>
 
-        <div style={{display:"flex",gap:"4px",flex:1,overflow:"hidden"}}>
+        {/* Open windows */}
+        <div style={{
+          display:"flex",gap:"4px",flex:1,overflow:"hidden",
+          minWidth:0,
+        }}>
           {wins.map(w=>(
-            <button key={w.id} onClick={()=>{
-              if(w.minimized){setWins(prev=>prev.map(x=>x.id===w.id?{...x,minimized:false,z:++zRef.current}:x));setActive(w.id);}
-              else if(active===w.id){minApp(w.id);}
-              else{focusApp(w.id);}
-            }} style={{
-              padding:"4px 10px",borderRadius:"8px",maxWidth:"150px",minWidth:"60px",
-              background:active===w.id?"rgba(14,165,233,0.2)":"rgba(255,255,255,0.06)",
-              border:`1px solid ${active===w.id?"rgba(14,165,233,0.35)":"rgba(255,255,255,0.06)"}`,
-              color:"#e2e8f0",cursor:"pointer",fontSize:"12px",
-              display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",
-            }}>
+            <button
+              key={w.id}
+              onClick={()=>{
+                if(w.minimized){ setWins(prev=>prev.map(x=>x.id===w.id?{...x,minimized:false,z:++zRef.current}:x)); setActive(w.id); }
+                else if(active===w.id){ minApp(w.id); }
+                else { focusApp(w.id); }
+              }}
+              style={{
+                padding:"4px 10px",borderRadius:"8px",
+                maxWidth: isMobile ? "80px" : "140px",
+                minWidth:"42px",
+                background:active===w.id?"rgba(14,165,233,0.18)":"rgba(255,255,255,0.05)",
+                border:`1px solid ${active===w.id?"rgba(14,165,233,0.3)":"rgba(255,255,255,0.05)"}`,
+                color:"#e2e8f0",cursor:"pointer",fontSize:"12px",
+                display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",
+                position:"relative",transition:"all 0.1s",flexShrink:0,
+              }}
+            >
               <span style={{flexShrink:0}}>{w.app.icon}</span>
-              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.app.name}</span>
-              {w.minimized&&<span style={{width:"4px",height:"4px",borderRadius:"50%",background:"#475569",flexShrink:0}}/>}
+              {!isMobile && (
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:"11.5px"}}>
+                  {w.app.name}
+                </span>
+              )}
+              {/* Active indicator */}
+              <div style={{
+                position:"absolute",bottom:"2px",left:"50%",transform:"translateX(-50%)",
+                width:active===w.id?"18px":"6px",height:"2px",borderRadius:"2px",
+                background:active===w.id?"#38bdf8":"rgba(255,255,255,0.2)",
+                transition:"all 0.15s",
+              }}/>
             </button>
           ))}
         </div>
 
-        <div style={{display:"flex",alignItems:"center",gap:"10px",color:"#94a3b8",fontSize:"16px",flexShrink:0,paddingLeft:"6px",borderLeft:"1px solid rgba(255,255,255,0.07)"}}>
-          <span>📶</span><span>🔊</span><span>🔋</span>
-          <div style={{textAlign:"right",lineHeight:1.25}}>
-            <div style={{fontSize:"13px",fontWeight:"600",color:"#e2e8f0"}}>{time.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}</div>
-            <div style={{fontSize:"10px",color:"#475569"}}>{time.toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit",year:"numeric"})}</div>
+        {/* System tray */}
+        <div style={{
+          display:"flex",alignItems:"center",gap:"8px",
+          color:"#94a3b8",fontSize:"15px",flexShrink:0,
+          paddingLeft:"8px",
+          borderLeft:"1px solid rgba(255,255,255,0.07)",
+        }}>
+          <span style={{cursor:"pointer",opacity:0.8}} title="Ağ">📶</span>
+          <span style={{cursor:"pointer",opacity:0.8}} title="Ses">🔊</span>
+          <span style={{cursor:"pointer",opacity:0.8}} title="Pil">🔋</span>
+
+          <div style={{
+            textAlign:"right",lineHeight:1.3,
+            paddingLeft:"6px",borderLeft:"1px solid rgba(255,255,255,0.07)",
+          }}>
+            <div style={{fontSize:"13px",fontWeight:"600",color:"#e2e8f0",letterSpacing:"-0.02em"}}>
+              {time.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}
+            </div>
+            <div className="taskbar-clock" style={{fontSize:"10px",color:"#334155"}}>
+              {time.toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit",year:"numeric"})}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Notification */}
+      {notif && <Notification notif={notif} onDismiss={()=>setNotif(null)}/>}
+
+      {/* Context Menu */}
+      {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={()=>setCtxMenu(null)}/>}
     </div>
   );
 }
